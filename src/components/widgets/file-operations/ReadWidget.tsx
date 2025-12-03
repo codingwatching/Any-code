@@ -22,6 +22,16 @@ export interface ReadWidgetProps {
  * 展示文件读取操作，支持加载状态和结果展示
  */
 export const ReadWidget: React.FC<ReadWidgetProps> = ({ filePath, result }) => {
+  // 🐛 DEBUG: Log render with result status
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[ReadWidget] Rendering:', {
+      filePath,
+      hasResult: !!result,
+      resultType: result ? typeof result : 'undefined',
+      resultContent: result?.content ? (typeof result.content === 'string' ? result.content.substring(0, 50) : typeof result.content) : 'no content'
+    });
+  }
+
   // 如果有结果，直接渲染结果组件，不显示额外的标签
   if (result) {
     let resultContent = '';

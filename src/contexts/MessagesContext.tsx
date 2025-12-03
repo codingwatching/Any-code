@@ -33,6 +33,16 @@ const buildToolResultMap = (messages: ClaudeStreamMessage[]): Map<string, ToolRe
     if (Array.isArray(content)) {
       content.forEach((item: any) => {
         if (item && item.type === "tool_result" && item.tool_use_id) {
+          // 🐛 DEBUG: Log when adding tool_result to Map
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[buildToolResultMap] Adding tool_result:', {
+              tool_use_id: item.tool_use_id,
+              hasContent: !!item.content,
+              contentType: typeof item.content,
+              contentPreview: typeof item.content === 'string' ? item.content.substring(0, 50) : typeof item.content
+            });
+          }
+
           results.set(item.tool_use_id, {
             toolUseId: item.tool_use_id,
             content: item.content ?? item.result ?? item,
@@ -43,6 +53,11 @@ const buildToolResultMap = (messages: ClaudeStreamMessage[]): Map<string, ToolRe
       });
     }
   });
+
+  // 🐛 DEBUG: Log Map size
+  if (process.env.NODE_ENV === 'development' && results.size > 0) {
+    console.log('[buildToolResultMap] Built map with', results.size, 'tool results');
+  }
 
   return results;
 };

@@ -589,9 +589,19 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
 
               // 🔧 FIX: Skip user messages from Gemini - already added by frontend
               // Gemini CLI echoes back user messages, but we already display them
-              if (data.type === 'user' && !data.message?.content?.some((c: any) => c.type === 'tool_result')) {
+              const hasToolResult = data.message?.content?.some((c: any) => c.type === 'tool_result');
+              if (data.type === 'user' && !hasToolResult) {
                 console.log('[usePromptExecution] Skipping Gemini user message (already shown)');
                 return;
+              }
+
+              // 🐛 DEBUG: Log tool_result messages
+              if (data.type === 'user' && hasToolResult) {
+                console.log('[Gemini tool_result] Received:', {
+                  type: data.type,
+                  content: data.message?.content,
+                  timestamp: data.timestamp
+                });
               }
 
               // 🔧 FIX: Handle delta messages - merge with last message of same type
@@ -647,7 +657,18 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
               const message = convertGeminiToClaudeMessage(data);
 
               if (message) {
-                setMessages(prev => [...prev, message]);
+                setMessages(prev => {
+                  const newMessages = [...prev, message];
+                  // 🐛 DEBUG: Log when adding tool_result message
+                  if (message.type === 'user' && hasToolResult) {
+                    console.log('[Gemini tool_result] Added to messages:', {
+                      previousCount: prev.length,
+                      newCount: newMessages.length,
+                      tool_use_id: message.message?.content?.[0]?.tool_use_id
+                    });
+                  }
+                  return newMessages;
+                });
                 setRawJsonlOutput((prev) => [...prev, payload]);
 
                 // 🔧 NOTE: Session ID handling moved to gemini-cli-session-id event listener
