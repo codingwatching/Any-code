@@ -12,17 +12,24 @@ export interface MessageFilterConfig {
   hideWarmupMessages: boolean;
 }
 
-interface MessagesContextValue {
+// ✅ 性能优化: 拆分为数据和操作两个 Context
+// 这样只使用操作函数的组件不会因数据更新而重渲染
+
+interface MessagesDataContextValue {
   messages: ClaudeStreamMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ClaudeStreamMessage[]>>;
   isStreaming: boolean;
-  setIsStreaming: React.Dispatch<React.SetStateAction<boolean>>;
   filterConfig: MessageFilterConfig;
-  setFilterConfig: React.Dispatch<React.SetStateAction<MessageFilterConfig>>;
   toolResults: Map<string, ToolResultEntry>;
 }
 
-const MessagesContext = React.createContext<MessagesContextValue | undefined>(undefined);
+interface MessagesActionsContextValue {
+  setMessages: React.Dispatch<React.SetStateAction<ClaudeStreamMessage[]>>;
+  setIsStreaming: React.Dispatch<React.SetStateAction<boolean>>;
+  setFilterConfig: React.Dispatch<React.SetStateAction<MessageFilterConfig>>;
+}
+
+const MessagesDataContext = React.createContext<MessagesDataContextValue | undefined>(undefined);
+const MessagesActionsContext = React.createContext<MessagesActionsContextValue | undefined>(undefined);
 
 const buildToolResultMap = (messages: ClaudeStreamMessage[]): Map<string, ToolResultEntry> => {
   const results = new Map<string, ToolResultEntry>();
@@ -75,28 +82,60 @@ export const MessagesProvider: React.FC<MessagesProviderProps> = ({
 
   const toolResults = React.useMemo(() => buildToolResultMap(messages), [messages]);
 
-  const contextValue = React.useMemo<MessagesContextValue>(
+  // ✅ 性能优化: 操作函数独立缓存，确保引用稳定
+  const actionsValue = React.useMemo<MessagesActionsContextValue>(
+    () => ({
+      setMessages,
+      setIsStreaming,
+      setFilterConfig,
+    }),
+    [setMessages, setIsStreaming, setFilterConfig]
+  );
+
+  // ✅ 性能优化: 数据独立缓存
+  const dataValue = React.useMemo<MessagesDataContextValue>(
     () => ({
       messages,
-      setMessages,
       isStreaming,
-      setIsStreaming,
       filterConfig,
-      setFilterConfig,
       toolResults,
     }),
     [messages, isStreaming, filterConfig, toolResults]
   );
 
-  return <MessagesContext.Provider value={contextValue}>{children}</MessagesContext.Provider>;
+  return (
+    <MessagesActionsContext.Provider value={actionsValue}>
+      <MessagesDataContext.Provider value={dataValue}>
+        {children}
+      </MessagesDataContext.Provider>
+    </MessagesActionsContext.Provider>
+  );
 };
 
-export const useMessagesContext = (): MessagesContextValue => {
-  const context = React.useContext(MessagesContext);
+// ✅ 性能优化: 只获取数据的 Hook（数据更新时会重渲染）
+export const useMessagesData = (): MessagesDataContextValue => {
+  const context = React.useContext(MessagesDataContext);
   if (!context) {
-    throw new Error("useMessagesContext must be used within a MessagesProvider");
+    throw new Error("useMessagesData must be used within a MessagesProvider");
   }
   return context;
+};
+
+// ✅ 性能优化: 只获取操作函数的 Hook（数据更新时不会重渲染）
+export const useMessagesActions = (): MessagesActionsContextValue => {
+  const context = React.useContext(MessagesActionsContext);
+  if (!context) {
+    throw new Error("useMessagesActions must be used within a MessagesProvider");
+  }
+  return context;
+};
+
+// ✅ 兼容性: 保留原有 API，同时获取数据和操作
+// 建议新代码使用 useMessagesData 或 useMessagesActions
+export const useMessagesContext = () => {
+  const data = useMessagesData();
+  const actions = useMessagesActions();
+  return { ...data, ...actions };
 };
 
 MessagesProvider.displayName = "MessagesProvider";
