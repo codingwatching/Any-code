@@ -754,21 +754,77 @@ fn resolve_command_in_path(command: &str, env: &RuntimeEnvironment) -> Option<St
         cmd.creation_flags(0x08000000);
     }
 
-    cmd.output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| {
-            let output = String::from_utf8_lossy(&o.stdout);
-            output.lines().next().map(|l| l.trim().to_string())
-        })
-        .and_then(|path| {
-            let path_buf = PathBuf::from(&path);
-            if path_buf.exists() {
-                Some(path)
-            } else {
-                None
+    let output = cmd.output().ok().filter(|o| o.status.success())?;
+    let output_str = String::from_utf8_lossy(&output.stdout);
+
+    // On Windows, 'where' may return multiple lines. We need to find the first one
+    // that is actually executable (has proper extension like .exe, .cmd, .bat)
+    #[cfg(target_os = "windows")]
+    {
+        let executable_extensions = [".exe", ".cmd", ".bat", ".ps1"];
+
+        for line in output_str.lines() {
+            let path = line.trim();
+            if path.is_empty() {
+                continue;
             }
-        })
+
+            let path_buf = PathBuf::from(path);
+            if !path_buf.exists() {
+                continue;
+            }
+
+            // Prefer paths with executable extensions
+            let has_exec_ext = executable_extensions
+                .iter()
+                .any(|ext| path.to_lowercase().ends_with(ext));
+
+            if has_exec_ext {
+                debug!("Found executable with extension: {}", path);
+                return Some(path.to_string());
+            }
+        }
+
+        // Fallback: try to resolve paths without extension by adding common extensions
+        for line in output_str.lines() {
+            let path = line.trim();
+            if path.is_empty() {
+                continue;
+            }
+
+            // If path has no extension, try adding common ones
+            let path_buf = PathBuf::from(path);
+            if path_buf.extension().is_none() {
+                for ext in &executable_extensions {
+                    let with_ext = format!("{}{}", path, ext);
+                    let with_ext_buf = PathBuf::from(&with_ext);
+                    if with_ext_buf.exists() && with_ext_buf.is_file() {
+                        debug!("Resolved path with extension: {}", with_ext);
+                        return Some(with_ext);
+                    }
+                }
+            }
+        }
+
+        // Last resort: return first existing path
+        for line in output_str.lines() {
+            let path = line.trim();
+            if !path.is_empty() && PathBuf::from(path).exists() {
+                return Some(path.to_string());
+            }
+        }
+
+        None
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        output_str
+            .lines()
+            .next()
+            .map(|l| l.trim().to_string())
+            .filter(|path| PathBuf::from(path).exists())
+    }
 }
 
 /// Windows 注册表查询 App Paths，获取安装路径
