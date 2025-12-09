@@ -9,6 +9,7 @@ import { api, type MCPServer } from "@/lib/api";
 import { MCPServerList } from "./MCPServerList";
 import { MCPAddServer } from "./MCPAddServer";
 import { MCPImportExport } from "./MCPImportExport";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface MCPManagerProps {
   /**
@@ -29,6 +30,7 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
   onBack,
   className,
 }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("servers");
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +66,7 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
       setCacheTimestamp(now);
     } catch (err) {
       console.error("MCPManager: Failed to load MCP servers:", err);
-      setError("加载 MCP 服务器失败。请确保 Claude Code 已安装。");
+      setError(t('mcp.loadError'));
     } finally {
       setLoading(false);
     }
@@ -75,7 +77,7 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
    */
   const handleServerAdded = () => {
     loadServers(true); // Force refresh when server is added
-    setToast({ message: "MCP 服务器添加成功！", type: "success" });
+    setToast({ message: t('mcp.addSuccess'), type: "success" });
     setActiveTab("servers");
   };
 
@@ -84,7 +86,7 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
    */
   const handleServerRemoved = (name: string) => {
     setServers(prev => prev.filter(s => s.name !== name));
-    setToast({ message: `服务器 "${name}" 删除成功！`, type: "success" });
+    setToast({ message: t('mcp.deleteSuccess', { name }), type: "success" });
   };
 
   /**
@@ -96,14 +98,14 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
       loadServers(true); // Force refresh when servers are imported
     }
     if (failed === 0) {
-      setToast({ 
-        message: `成功导入 ${imported} 个服务器！`, 
-        type: "success" 
+      setToast({
+        message: t('mcp.importSuccess', { count: imported }),
+        type: "success"
       });
     } else {
-      setToast({ 
-        message: `导入 ${imported} 个服务器，${failed} 个失败`, 
-        type: "error" 
+      setToast({
+        message: t('mcp.importPartial', { success: imported, failed }),
+        type: "error"
       });
     }
   };
@@ -124,17 +126,17 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
               size="icon"
               onClick={onBack}
               className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-              aria-label="返回"
+              aria-label={t('buttons.back')}
             >
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
             <div>
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Network className="h-5 w-5 text-blue-500" />
-                MCP 服务器
+                {t('mcp.servers')}
               </h2>
               <p className="text-xs text-muted-foreground">
-                管理模型上下文协议服务器
+                {t('mcp.manageServers')}
               </p>
             </div>
           </div>
@@ -166,15 +168,15 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
               <TabsList className="grid w-full max-w-md grid-cols-3">
                 <TabsTrigger value="servers" className="gap-2">
                   <Network className="h-4 w-4 text-blue-500" />
-                  服务器
+                  {t('mcp.servers')}
                 </TabsTrigger>
                 <TabsTrigger value="add" className="gap-2">
                   <Plus className="h-4 w-4 text-green-500" />
-                  添加服务器
+                  {t('mcp.addServer')}
                 </TabsTrigger>
                 <TabsTrigger value="import" className="gap-2">
                   <Download className="h-4 w-4 text-purple-500" />
-                  导入/导出
+                  {t('mcp.importExport')}
                 </TabsTrigger>
               </TabsList>
 

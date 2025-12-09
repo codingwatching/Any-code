@@ -180,7 +180,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
     } catch (err) {
       console.error("Failed to load settings:", err);
-      setError("加载设置失败。请确保 ~/.claude 目录存在。");
+      setError(t('errors.loadFailed'));
       setSettings({});
     } finally {
       setLoading(false);
@@ -241,8 +241,8 @@ export const Settings: React.FC<SettingsProps> = ({
       setToast({ message: "Settings saved successfully!", type: "success" });
     } catch (err) {
       console.error("Failed to save settings:", err);
-      setError("保存设置失败。");
-      setToast({ message: "保存设置失败", type: "error" });
+      setError(t('errors.saveFailed'));
+      setToast({ message: t('errors.saveFailed'), type: "error" });
     } finally {
       setSaving(false);
     }
@@ -431,12 +431,12 @@ export const Settings: React.FC<SettingsProps> = ({
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid grid-cols-8 w-full">
               <TabsTrigger value="general">{t('settings.general')}</TabsTrigger>
-              <TabsTrigger value="permissions">权限</TabsTrigger>
-              <TabsTrigger value="environment">环境</TabsTrigger>
-              <TabsTrigger value="hooks">钩子</TabsTrigger>
-              <TabsTrigger value="translation">翻译</TabsTrigger>
-              <TabsTrigger value="prompt-api">提示词API</TabsTrigger>
-              <TabsTrigger value="provider">代理商</TabsTrigger>
+              <TabsTrigger value="permissions">{t('settings.permissions')}</TabsTrigger>
+              <TabsTrigger value="environment">{t('settings.environment')}</TabsTrigger>
+              <TabsTrigger value="hooks">{t('settings.hooks')}</TabsTrigger>
+              <TabsTrigger value="translation">{t('settings.translation')}</TabsTrigger>
+              <TabsTrigger value="prompt-api">{t('settings.promptApi')}</TabsTrigger>
+              <TabsTrigger value="provider">{t('settings.provider')}</TabsTrigger>
               <TabsTrigger value="storage">{t('settings.storage')}</TabsTrigger>
             </TabsList>
             
@@ -495,9 +495,9 @@ export const Settings: React.FC<SettingsProps> = ({
             <TabsContent value="provider" className="space-y-4">
               <Tabs value={providerSubTab} onValueChange={setProviderSubTab} className="w-full">
                 <TabsList className="grid grid-cols-3 w-96">
-                  <TabsTrigger value="claude">Claude 代理商</TabsTrigger>
-                  <TabsTrigger value="codex">Codex 代理商</TabsTrigger>
-                  <TabsTrigger value="gemini">Gemini 代理商</TabsTrigger>
+                  <TabsTrigger value="claude">{t('settings.claudeProvider')}</TabsTrigger>
+                  <TabsTrigger value="codex">{t('settings.codexProvider')}</TabsTrigger>
+                  <TabsTrigger value="gemini">{t('settings.geminiProvider')}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="claude">
                   <ProviderManager onBack={() => {}} />
@@ -525,24 +525,24 @@ export const Settings: React.FC<SettingsProps> = ({
       <Dialog open={showRewindGitConfirmDialog} onOpenChange={setShowRewindGitConfirmDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>⚠️ 确认禁用 Git 操作</DialogTitle>
+            <DialogTitle>⚠️ {t('dialogs.confirmGitOps')}</DialogTitle>
             <DialogDescription className="space-y-3 pt-2">
-              <p>您即将禁用撤回功能中的 Git 操作。启用此选项后：</p>
+              <p>{t('dialogs.gitOpsWarning')}</p>
               <ul className="list-disc pl-5 space-y-2 text-sm">
                 <li className="text-green-600 dark:text-green-400">
-                  <strong>仍然可以：</strong>撤回对话历史（删除消息记录）
+                  <strong>{t('dialogs.gitOpsCanDo')}</strong>
                 </li>
                 <li className="text-red-600 dark:text-red-400">
-                  <strong>无法执行：</strong>代码回滚操作（Git reset/stash）
+                  <strong>{t('dialogs.gitOpsCannotDo')}</strong>
                 </li>
               </ul>
               <p className="text-yellow-600 dark:text-yellow-400 font-medium">
-                ⚠️ 这意味着您将无法通过撤回功能恢复代码到之前的状态。
+                ⚠️ {t('dialogs.gitOpsNote')}
               </p>
               <p className="text-muted-foreground">
-                适用场景：多人协作项目、生产环境、或只需管理对话记录的情况。
+                {t('dialogs.gitOpsUseCase')}
               </p>
-              <p className="font-medium">确定要启用此选项吗？</p>
+              <p className="font-medium">{t('dialogs.confirmDeleteMessage')}</p>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -550,13 +550,13 @@ export const Settings: React.FC<SettingsProps> = ({
               variant="outline"
               onClick={cancelEnableRewindGitOpsDisable}
             >
-              取消
+              {t('buttons.cancel')}
             </Button>
             <Button
               variant="destructive"
               onClick={confirmEnableRewindGitOpsDisable}
             >
-              确定启用
+              {t('dialogs.confirmEnable')}
             </Button>
           </DialogFooter>
         </DialogContent>

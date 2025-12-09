@@ -84,25 +84,25 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
    */
   const handleSetCustomPath = async () => {
     if (!customClaudePath.trim()) {
-      setCustomPathError("请输入有效的路径");
+      setCustomPathError(t('generalSettings.enterValidPath'));
       return;
     }
 
     try {
       setCustomPathError(null);
       await api.setCustomClaudePath(customClaudePath.trim());
-      
+
       // Clear the custom path field and exit custom mode
       setCustomClaudePath("");
       setIsCustomPathMode(false);
-      
+
       // Show success message
-      setToast({ message: "自定义 Claude CLI 路径设置成功", type: "success" });
-      
+      setToast({ message: t('generalSettings.customPathSuccess'), type: "success" });
+
       // Trigger status refresh
       window.dispatchEvent(new CustomEvent('validate-claude-installation'));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "设置自定义路径失败";
+      const errorMessage = error instanceof Error ? error.message : t('generalSettings.setCustomPathFailed');
       setCustomPathError(errorMessage);
     }
   };
@@ -120,12 +120,12 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       setCustomPathError(null);
 
       // Show success message
-      setToast({ message: "已恢复到自动检测", type: "success" });
+      setToast({ message: t('generalSettings.restoredAutoDetect'), type: "success" });
 
       // Trigger status refresh
       window.dispatchEvent(new CustomEvent('validate-claude-installation'));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "清除自定义路径失败";
+      const errorMessage = error instanceof Error ? error.message : t('generalSettings.clearCustomPathFailed');
       setToast({ message: errorMessage, type: "error" });
     }
   };
@@ -144,13 +144,13 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       const isValid = await api.validateCodexPath(path.trim());
       setCodexPathValid(isValid);
       if (!isValid) {
-        setCodexPathError("路径无效或 Codex 不可执行");
+        setCodexPathError(t('generalSettings.codexPathInvalid'));
       } else {
         setCodexPathError(null);
       }
     } catch (error) {
       setCodexPathValid(false);
-      setCodexPathError("验证路径时出错");
+      setCodexPathError(t('generalSettings.codexPathValidationError'));
     } finally {
       setValidatingCodexPath(false);
     }
@@ -161,7 +161,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
    */
   const handleSetCodexCustomPath = async () => {
     if (!customCodexPath.trim()) {
-      setCodexPathError("请输入有效的路径");
+      setCodexPathError(t('generalSettings.enterValidPath'));
       return;
     }
 
@@ -170,7 +170,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
     try {
       const isValid = await api.validateCodexPath(customCodexPath.trim());
       if (!isValid) {
-        setCodexPathError("路径无效或 Codex 不可执行");
+        setCodexPathError(t('generalSettings.codexPathInvalid'));
         setCodexPathValid(false);
         return;
       }
@@ -185,12 +185,12 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       setCustomCodexPath("");
 
       // Show success message
-      setToast({ message: "自定义 Codex 路径设置成功", type: "success" });
+      setToast({ message: t('generalSettings.codexPathSuccess'), type: "success" });
 
       // Trigger Codex status refresh
       window.dispatchEvent(new CustomEvent('refresh-codex-status'));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "设置自定义路径失败";
+      const errorMessage = error instanceof Error ? error.message : t('generalSettings.setCustomPathFailed');
       setCodexPathError(errorMessage);
     } finally {
       setValidatingCodexPath(false);
@@ -211,12 +211,12 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       setCodexPathValid(null);
 
       // Show success message
-      setToast({ message: "已恢复 Codex 自动检测", type: "success" });
+      setToast({ message: t('generalSettings.codexRestoredAutoDetect'), type: "success" });
 
       // Trigger Codex status refresh
       window.dispatchEvent(new CustomEvent('refresh-codex-status'));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "清除自定义路径失败";
+      const errorMessage = error instanceof Error ? error.message : t('generalSettings.clearCustomPathFailed');
       setToast({ message: errorMessage, type: "error" });
     }
   };
@@ -259,9 +259,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
           {/* Show System Initialization Info */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5 flex-1">
-              <Label htmlFor="showSystemInit">显示系统初始化信息</Label>
+              <Label htmlFor="showSystemInit">{t('generalSettings.showSystemInit')}</Label>
               <p className="text-xs text-muted-foreground">
-                在会话开始时显示Session ID、Model、工作目录和可用工具信息
+                {t('generalSettings.showSystemInitDescription')}
               </p>
             </div>
             <Switch
@@ -274,9 +274,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
           {/* Hide Warmup Messages */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5 flex-1">
-              <Label htmlFor="hideWarmup">隐藏 Warmup 消息</Label>
+              <Label htmlFor="hideWarmup">{t('generalSettings.hideWarmup')}</Label>
               <p className="text-xs text-muted-foreground">
-                在会话消息中隐藏自动发送的 Warmup 消息及其回复（启动时的预热消息）
+                {t('generalSettings.hideWarmupDescription')}
               </p>
             </div>
             <Switch
@@ -289,9 +289,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
           {/* Include Co-authored By */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5 flex-1">
-              <Label htmlFor="coauthored">包含 "Co-authored by Claude"</Label>
+              <Label htmlFor="coauthored">{t('generalSettings.includeCoauthored')}</Label>
               <p className="text-xs text-muted-foreground">
-                在 git 提交和拉取请求中添加 Claude 署名
+                {t('generalSettings.includeCoauthoredDescription')}
               </p>
             </div>
             <Switch
@@ -300,13 +300,13 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               onCheckedChange={(checked) => updateSetting("includeCoAuthoredBy", checked)}
             />
           </div>
-          
+
           {/* Verbose Output */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5 flex-1">
-              <Label htmlFor="verbose">详细输出</Label>
+              <Label htmlFor="verbose">{t('generalSettings.verboseOutput')}</Label>
               <p className="text-xs text-muted-foreground">
-                显示完整的 bash 和命令输出
+                {t('generalSettings.verboseOutputDescription')}
               </p>
             </div>
             <Switch
@@ -319,9 +319,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
           {/* Disable Rewind Git Operations */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5 flex-1">
-              <Label htmlFor="disableRewindGitOps">禁用撤回中的 Git 操作</Label>
+              <Label htmlFor="disableRewindGitOps">{t('generalSettings.disableRewindGitOps')}</Label>
               <p className="text-xs text-muted-foreground">
-                启用后，撤回功能只能删除对话历史，无法回滚代码变更（适用于多人协作或生产环境）
+                {t('generalSettings.disableRewindGitOpsDescription')}
               </p>
             </div>
             <Switch
@@ -330,10 +330,10 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               onCheckedChange={handleRewindGitOpsToggle}
             />
           </div>
-          
+
           {/* Cleanup Period */}
           <div className="space-y-2">
-            <Label htmlFor="cleanup">聊天记录保留天数</Label>
+            <Label htmlFor="cleanup">{t('generalSettings.chatRetentionDays')}</Label>
             <Input
               id="cleanup"
               type="number"
@@ -346,7 +346,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
               }}
             />
             <p className="text-xs text-muted-foreground">
-              本地保留聊天记录的时长（默认：30天）
+              {t('generalSettings.chatRetentionDaysDescription')}
             </p>
           </div>
           
@@ -356,9 +356,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <Label className="text-sm font-medium">自定义 Claude CLI 路径</Label>
+                  <Label className="text-sm font-medium">{t('generalSettings.customClaudePath')}</Label>
                   <p className="text-xs text-muted-foreground">
-                    手动指定自定义的 Claude CLI 可执行文件路径
+                    {t('generalSettings.customClaudePathDescription')}
                   </p>
                 </div>
                 <Button
@@ -370,7 +370,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                     setCustomClaudePath("");
                   }}
                 >
-                  {isCustomPathMode ? "取消" : "设置自定义路径"}
+                  {isCustomPathMode ? t('buttons.cancel') : t('generalSettings.setCustomPath')}
                 </Button>
               </div>
 
@@ -403,26 +403,26 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                         onClick={handleSetCustomPath}
                         disabled={!customClaudePath.trim()}
                       >
-                        设置路径
+                        {t('generalSettings.setPath')}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={handleClearCustomPath}
                       >
-                        恢复自动检测
+                        {t('generalSettings.restoreAutoDetect')}
                       </Button>
                     </div>
-                    
+
                     <div className="p-3 bg-muted rounded-md">
                       <div className="flex items-start gap-2">
                         <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
                           <p className="text-xs text-muted-foreground">
-                            <strong>当前路径:</strong> 未设置
+                            <strong>{t('generalSettings.currentPath')}:</strong> {t('generalSettings.notSet')}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            自定义路径在保存前会进行验证。请确保文件存在且为有效的 Claude CLI 可执行文件。
+                            {t('generalSettings.pathValidationHint')}
                           </p>
                         </div>
                       </div>
@@ -438,9 +438,9 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <Label className="text-sm font-medium">自定义 Codex CLI 路径</Label>
+                  <Label className="text-sm font-medium">{t('generalSettings.customCodexPath')}</Label>
                   <p className="text-xs text-muted-foreground">
-                    手动指定自定义的 Codex 可执行文件路径（例如：D:\nodejs\node_global\codex.ps1）
+                    {t('generalSettings.customCodexPathDescription')}
                   </p>
                 </div>
                 <Button
@@ -453,7 +453,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                     setCodexPathValid(null);
                   }}
                 >
-                  {isCodexCustomPathMode ? "取消" : "设置自定义路径"}
+                  {isCodexCustomPathMode ? t('buttons.cancel') : t('generalSettings.setCustomPath')}
                 </Button>
               </div>
 
@@ -468,7 +468,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                     <div className="space-y-2">
                       <div className="flex gap-2">
                         <Input
-                          placeholder="例如：D:\nodejs\node_global\codex.ps1 或 codex"
+                          placeholder={t('generalSettings.codexPathPlaceholder')}
                           value={customCodexPath}
                           onChange={(e) => {
                             setCustomCodexPath(e.target.value);
@@ -490,10 +490,10 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                         )}
                         {!validatingCodexPath && codexPathValid === true && (
-                          <span className="text-green-500 text-sm flex items-center">✓ 有效</span>
+                          <span className="text-green-500 text-sm flex items-center">✓ {t('common.valid')}</span>
                         )}
                         {!validatingCodexPath && codexPathValid === false && (
-                          <span className="text-red-500 text-sm flex items-center">✗ 无效</span>
+                          <span className="text-red-500 text-sm flex items-center">✗ {t('common.invalid')}</span>
                         )}
                       </div>
                       {codexPathError && (
@@ -510,10 +510,10 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                         {validatingCodexPath ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                            验证中...
+                            {t('messages.validating')}
                           </>
                         ) : (
-                          "设置路径"
+                          t('generalSettings.setPath')
                         )}
                       </Button>
                       <Button
@@ -521,7 +521,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                         size="sm"
                         onClick={handleClearCodexCustomPath}
                       >
-                        恢复自动检测
+                        {t('generalSettings.restoreAutoDetect')}
                       </Button>
                     </div>
 
@@ -530,15 +530,14 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
                         <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
                           <p className="text-xs text-muted-foreground">
-                            <strong>提示:</strong> 在 Windows 上，Codex 可能位于 npm/pnpm/yarn 的全局安装目录。
+                            <strong>{t('generalSettings.codexPathHint')}</strong>
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            常见路径：
+                            {t('generalSettings.codexCommonPaths')}
                           </p>
                           <ul className="text-xs text-muted-foreground mt-1 ml-3 list-disc">
-                            <li>C:\Users\用户名\AppData\Roaming\npm\codex.ps1</li>
+                            <li>C:\Users\username\AppData\Roaming\npm\codex.ps1</li>
                             <li>D:\nodejs\node_global\codex.ps1</li>
-                            <li>您的自定义 npm 全局安装目录</li>
                           </ul>
                         </div>
                       </div>

@@ -33,16 +33,16 @@ export const PermissionsSettings: React.FC<PermissionsSettingsProps> = ({
     <Card className="p-6">
       <div className="space-y-6">
         <div>
-          <h3 className="text-base font-semibold mb-2">权限规则</h3>
+          <h3 className="text-base font-semibold mb-2">{t('permissionsSettings.title')}</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            控制 Claude Code 可以无需手动批准使用的工具
+            {t('permissionsSettings.subtitle')}
           </p>
         </div>
-        
+
         {/* Allow Rules */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium text-green-500">允许规则</Label>
+            <Label className="text-sm font-medium text-green-500">{t('permissionsSettings.allowRules')}</Label>
             <Button
               variant="outline"
               size="sm"
@@ -50,13 +50,13 @@ export const PermissionsSettings: React.FC<PermissionsSettingsProps> = ({
               className="gap-2 hover:border-green-500/50 hover:text-green-500"
             >
               <Plus className="h-3 w-3" aria-hidden="true" />
-              添加规则
+              {t('permissionsSettings.addRule')}
             </Button>
           </div>
           <div className="space-y-2">
             {allowRules.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">
-                未配置允许规则。Claude 将对所有工具请求您的审批。
+                {t('permissionsSettings.noAllowRules')}
               </p>
             ) : (
               allowRules.map((rule) => (
@@ -77,7 +77,7 @@ export const PermissionsSettings: React.FC<PermissionsSettingsProps> = ({
                     size="icon"
                     onClick={() => removePermissionRule("allow", rule.id)}
                     className="h-8 w-8"
-                    aria-label="删除规则"
+                    aria-label={t('permissionsSettings.deleteRule')}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
@@ -90,7 +90,7 @@ export const PermissionsSettings: React.FC<PermissionsSettingsProps> = ({
         {/* Deny Rules */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium text-red-500">拒绝规则</Label>
+            <Label className="text-sm font-medium text-red-500">{t('permissionsSettings.denyRules')}</Label>
             <Button
               variant="outline"
               size="sm"
@@ -98,13 +98,13 @@ export const PermissionsSettings: React.FC<PermissionsSettingsProps> = ({
               className="gap-2 hover:border-red-500/50 hover:text-red-500"
             >
               <Plus className="h-3 w-3" aria-hidden="true" />
-              添加规则
+              {t('permissionsSettings.addRule')}
             </Button>
           </div>
           <div className="space-y-2">
             {denyRules.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">
-                未配置拒绝规则。
+                {t('permissionsSettings.noDenyRules')}
               </p>
             ) : (
               denyRules.map((rule) => (
@@ -125,7 +125,7 @@ export const PermissionsSettings: React.FC<PermissionsSettingsProps> = ({
                     size="icon"
                     onClick={() => removePermissionRule("deny", rule.id)}
                     className="h-8 w-8"
-                    aria-label="删除规则"
+                    aria-label={t('permissionsSettings.deleteRule')}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
@@ -137,14 +137,14 @@ export const PermissionsSettings: React.FC<PermissionsSettingsProps> = ({
         
         <div className="pt-2 space-y-2">
           <p className="text-xs text-muted-foreground">
-            <strong>示例：</strong>
+            <strong>{t('permissionsSettings.examples')}</strong>
           </p>
           <ul className="text-xs text-muted-foreground space-y-1 ml-4">
-            <li>• <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Bash</code> - 允许所有bash命令</li>
-            <li>• <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Bash(npm run build)</code> - 允许精确命令</li>
-            <li>• <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Bash(npm run test:*)</code> - 允许带前缀的命令</li>
-            <li>• <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Read(~/.zshrc)</code> - 允许读取特定文件</li>
-            <li>• <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Edit(docs/**)</code> - 允许编辑docs目录下的文件</li>
+            <li>- <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Bash</code> - {t('permissionsSettings.exampleBashAll')}</li>
+            <li>- <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Bash(npm run build)</code> - {t('permissionsSettings.exampleBashExact')}</li>
+            <li>- <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Bash(npm run test:*)</code> - {t('permissionsSettings.exampleBashPrefix')}</li>
+            <li>- <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Read(~/.zshrc)</code> - {t('permissionsSettings.exampleReadFile')}</li>
+            <li>- <code className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Edit(docs/**)</code> - {t('permissionsSettings.exampleEditDir')}</li>
           </ul>
         </div>
       </div>
