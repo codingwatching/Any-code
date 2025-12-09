@@ -428,12 +428,12 @@ export const SessionList: React.FC<SessionListProps> = ({
                     {selectedSessions.size === currentSessions.length ? (
                       <>
                         <CheckSquare className="h-4 w-4 mr-2" />
-                        取消全选
+                        {t('sessionList.deselectAll')}
                       </>
                     ) : (
                       <>
                         <Square className="h-4 w-4 mr-2" />
-                        全选当前页
+                        {t('sessionList.selectAllOnPage')}
                       </>
                     )}
                   </Button>
@@ -460,7 +460,7 @@ export const SessionList: React.FC<SessionListProps> = ({
               disabled={isDeleting}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              {isDeleting ? "删除中..." : `删除选中 (${selectedSessions.size})`}
+              {isDeleting ? t('sessionList.deleting') : t('sessionList.deleteSelected', { count: selectedSessions.size })}
             </Button>
           )}
 
@@ -471,7 +471,7 @@ export const SessionList: React.FC<SessionListProps> = ({
               onClick={toggleSelectionMode}
               disabled={isDeleting}
             >
-              {isSelectionMode ? "取消选择" : "批量选择"}
+              {isSelectionMode ? t('sessionList.cancelSelection') : t('sessionList.batchSelection')}
             </Button>
           )}
 
@@ -493,7 +493,7 @@ export const SessionList: React.FC<SessionListProps> = ({
       <div
         className="border border-border rounded-lg overflow-hidden divide-y divide-border"
         role="list"
-        aria-label="会话列表"
+        aria-label={t('sessionList.sessionListLabel')}
         aria-live="polite"
       >
         {currentSessions.map((session) => {
@@ -620,11 +620,11 @@ export const SessionList: React.FC<SessionListProps> = ({
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认删除会话</DialogTitle>
+            <DialogTitle>{t('sessionList.confirmDelete')}</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-muted-foreground mb-4">
-              确定要删除此会话吗？此操作将永久删除会话记录和相关数据，无法恢复。
+              {t('sessionList.deleteWarning')}
             </p>
             {sessionToDelete && (
               <div className="mt-3 p-3 bg-muted rounded-md">
@@ -645,14 +645,14 @@ export const SessionList: React.FC<SessionListProps> = ({
               onClick={cancelDelete}
               disabled={isDeleting}
             >
-              取消
+              {t('sessionList.cancel')}
             </Button>
             <Button
               variant="destructive"
               onClick={confirmDelete}
               disabled={isDeleting}
             >
-              {isDeleting ? "删除中..." : "确认删除"}
+              {isDeleting ? t('sessionList.deleting') : t('sessionList.confirmDelete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -743,7 +743,7 @@ export const SessionList: React.FC<SessionListProps> = ({
               onClick={cancelConvert}
               disabled={isConverting}
             >
-              取消
+              {t('sessionList.cancel')}
             </Button>
             <Button
               onClick={confirmConvert}

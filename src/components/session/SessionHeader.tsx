@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { FolderOpen, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,8 @@ export const SessionHeader: React.FC<SessionHeaderProps> = ({
   recentProjects,
   isLoading
 }) => {
+  const { t } = useTranslation();
+  
   return (
     <motion.div
       initial={{ opacity: 0, y: -20 }}
@@ -33,9 +36,9 @@ export const SessionHeader: React.FC<SessionHeaderProps> = ({
         {!projectPath && (
           <div className="text-center mb-6">
             <FolderOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-            <h3 className="text-lg font-semibold mb-2">选择项目目录</h3>
+            <h3 className="text-lg font-semibold mb-2">{t('sessionHeader.selectProjectDirectory')}</h3>
             <p className="text-sm text-muted-foreground">
-              请选择一个项目目录来开始新的 Claude 会话
+              {t('sessionHeader.selectProjectPrompt')}
             </p>
           </div>
         )}
@@ -43,14 +46,14 @@ export const SessionHeader: React.FC<SessionHeaderProps> = ({
         {/* Project path input */}
         <div className="space-y-2">
           <Label htmlFor="project-path" className="text-sm font-medium">
-            项目路径
+            {t('sessionHeader.projectPath')}
           </Label>
           <div className="flex items-center gap-2">
             <Input
               id="project-path"
               value={projectPath}
               onChange={(e) => setProjectPath(e.target.value)}
-              placeholder="输入项目路径或点击浏览按钮选择"
+              placeholder={t('sessionHeader.projectPathPlaceholder')}
               className="flex-1"
               disabled={isLoading}
             />
@@ -61,7 +64,7 @@ export const SessionHeader: React.FC<SessionHeaderProps> = ({
               className="gap-2"
             >
               <FolderOpen className="h-4 w-4" />
-              浏览
+              {t('sessionHeader.browse')}
             </Button>
           </div>
         </div>
@@ -71,7 +74,7 @@ export const SessionHeader: React.FC<SessionHeaderProps> = ({
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
-              <span>最近使用的项目</span>
+              <span>{t('sessionHeader.recentProjects')}</span>
             </div>
             <div className="grid gap-2">
               {recentProjects.map((project) => (
