@@ -23,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator';
+import { UnifiedEngineStatus } from '@/components/UnifiedEngineStatus';
 import { UpdateBadge } from '@/components/common/UpdateBadge';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 
@@ -155,10 +155,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         "flex flex-col w-full mt-auto pt-4 border-t border-[var(--glass-border)]",
         isExpanded ? "space-y-3" : "items-center"
       )}>
-        {/* Claude 状态指示器 */}
-        <div className={cn(isExpanded ? "px-2" : "flex justify-center")}>
-          <ClaudeStatusIndicator
-            onSettingsClick={() => onNavigate('settings')}
+        {/* 多引擎状态指示器 */}
+        <div className={cn(isExpanded ? "w-full" : "flex justify-center w-full")}>
+          <UnifiedEngineStatus
             compact={!isExpanded}
           />
         </div>
