@@ -1000,7 +1000,15 @@
     "fileContainsMatch": "(文件包含匹配项)",
     "matchedLine": "(匹配行)",
     "matches": "个匹配",
-    "noResults": "无结果"
+    "noResults": "无结果",
+    "success": "成功",
+    "executing": "执行中",
+    "open": "打开",
+    "parameters": "参数",
+    "result": "结果",
+    "executionFailed": "执行失败",
+    "executionResult": "执行结果",
+    "waitingForResult": "等待执行结果..."
   },
   "usageDashboard": {
     "today": "今日",

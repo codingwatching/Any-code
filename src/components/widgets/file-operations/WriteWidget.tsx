@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { FilePlus, ExternalLink, ChevronUp, ChevronDown, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -41,6 +42,7 @@ export const WriteWidget: React.FC<WriteWidgetProps> = ({
   result: _result,
   isStreaming = false,
 }) => {
+  const { t } = useTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
   // 流式输出时默认展开，否则默认收起
   const [isExpanded, setIsExpanded] = useState(isStreaming);
@@ -118,7 +120,7 @@ export const WriteWidget: React.FC<WriteWidgetProps> = ({
                     <>
                       <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                       <span className={cn("font-medium hidden sm:inline", isSuccess ? "text-green-500" : "text-red-500")}>
-                        {isSuccess ? '成功' : '失败'}
+                        {isSuccess ? t('widget.success') : t('widget.failed')}
                       </span>
                     </>
                   ) : (
@@ -138,10 +140,10 @@ export const WriteWidget: React.FC<WriteWidgetProps> = ({
                   e.stopPropagation();
                   handleOpenInSystem();
                 }}
-                title="用系统默认应用打开"
+                title={t('widget.openWithDefault')}
               >
                 <ExternalLink className="h-3 w-3 mr-1" />
-                打开
+                {t('widget.open')}
               </Button>
               <div className="h-6 px-2 text-muted-foreground group-hover/header:text-foreground flex items-center gap-1 transition-colors">
                 {isExpanded ? (

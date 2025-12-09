@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Package2, Sparkles, Code, ChevronUp, ChevronDown, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { getClaudeSyntaxTheme } from "@/lib/claudeSyntaxTheme";
@@ -41,6 +42,7 @@ export const MCPWidget: React.FC<MCPWidgetProps> = ({
   input,
   result,
 }) => {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isResultExpanded, setIsResultExpanded] = useState(false);
@@ -112,7 +114,7 @@ export const MCPWidget: React.FC<MCPWidgetProps> = ({
       : <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
     : <Loader2 className="h-3.5 w-3.5 text-violet-500 animate-spin" />;
 
-  const statusText = hasResult ? (isError ? '失败' : '成功') : '执行中';
+  const statusText = hasResult ? (isError ? t('widget.failed') : t('widget.success')) : t('widget.executing');
   const statusColor = hasResult ? (isError ? 'text-red-500' : 'text-green-500') : 'text-violet-500';
 
   return (
@@ -175,7 +177,7 @@ export const MCPWidget: React.FC<MCPWidgetProps> = ({
               <div className="px-3 py-2 border-b border-border/50 bg-muted/30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Code className="h-3.5 w-3.5 text-violet-500" />
-                  <span className="text-xs font-medium text-muted-foreground">参数</span>
+                  <span className="text-xs font-medium text-muted-foreground">{t('widget.parameters')}</span>
                 </div>
               </div>
               <div className="overflow-auto max-h-[300px]">
@@ -258,7 +260,7 @@ export const MCPWidget: React.FC<MCPWidgetProps> = ({
                         onClick={() => setIsResultExpanded(!isResultExpanded)}
                         className="text-xs bg-background/80 backdrop-blur-sm border shadow-sm px-2 py-1 rounded hover:bg-accent transition-colors"
                       >
-                        {isResultExpanded ? "收起结果" : "展开全部"}
+                        {isResultExpanded ? t('widget.collapseResult') : t('widget.expandAll')}
                       </button>
                     </div>
                   </>
@@ -271,7 +273,7 @@ export const MCPWidget: React.FC<MCPWidgetProps> = ({
           {!hasResult && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground italic px-2 py-2">
               <Loader2 className="h-3 w-3 animate-spin" />
-              等待执行结果...
+              {t('widget.waitingForResult')}
             </div>
           )}
         </div>

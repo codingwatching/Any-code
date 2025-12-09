@@ -1000,7 +1000,15 @@
     "fileContainsMatch": "(file contains matches)",
     "matchedLine": "(matched line)",
     "matches": "matches",
-    "noResults": "No results"
+    "noResults": "No results",
+    "success": "Success",
+    "executing": "Executing",
+    "open": "Open",
+    "parameters": "Parameters",
+    "result": "Result",
+    "executionFailed": "Execution Failed",
+    "executionResult": "Execution Result",
+    "waitingForResult": "Waiting for execution result..."
   },
   "usageDashboard": {
     "today": "Today",
