@@ -227,22 +227,24 @@ export const DeletedProjects: React.FC<DeletedProjectsProps> = ({
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.3, delay: index * 0.05 }}
           >
-            <Card className="p-4">
+            <div className="p-4 rounded-xl bg-card border border-border/40 shadow-sm hover:shadow-md transition-all duration-300">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <FolderOpen className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-muted/50 text-muted-foreground shrink-0">
+                    <FolderOpen className="h-5 w-5" />
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">
+                    <p className="font-semibold text-foreground/80 truncate">
                       {project.path.split(/[\\\/]/).pop() || project.path}
                     </p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">
+                    <p className="text-xs text-muted-foreground font-mono truncate mt-0.5 bg-muted/30 inline-block px-1.5 py-0.5 rounded">
                       {project.path}
                     </p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 ml-4">
-                  <Badge variant="secondary" className="shrink-0">
+                <div className="flex items-center gap-3 ml-4">
+                  <Badge variant="secondary" className="shrink-0 bg-muted/50 text-muted-foreground hover:bg-muted/50">
                     已删除
                   </Badge>
                   
@@ -253,40 +255,40 @@ export const DeletedProjects: React.FC<DeletedProjectsProps> = ({
                     </Badge>
                   )}
                   
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleRestore(project.id)}
-                    disabled={restoring === project.id}
-                    className="shrink-0"
-                  >
-                    {restoring === project.id ? (
-                      <>
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary mr-2" />
-                        恢复中...
-                      </>
-                    ) : (
-                      <>
-                        <RotateCcw className="h-4 w-4 mr-2" />
-                        恢复
-                      </>
-                    )}
-                  </Button>
-                  
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPermanentDeleteDialog({ 
-                      open: true, 
-                      projectId: project.id 
-                    })}
-                    className="shrink-0 text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1 border-l pl-3 ml-1 border-border/50">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRestore(project.id)}
+                      disabled={restoring === project.id}
+                      className="h-8 text-primary hover:text-primary hover:bg-primary/10"
+                      title="恢复项目"
+                    >
+                      {restoring === project.id ? (
+                        <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-primary border-t-transparent" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" />
+                      )}
+                      <span className="ml-2 sr-only">恢复</span>
+                    </Button>
+                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPermanentDeleteDialog({ 
+                        open: true, 
+                        projectId: project.id 
+                      })}
+                      className="h-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                      title="永久删除"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="ml-2 sr-only">永久删除</span>
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </Card>
+            </div>
           </motion.div>
         ))}
       </div>
