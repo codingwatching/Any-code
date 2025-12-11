@@ -416,8 +416,12 @@ export interface MCPServerSpec {
   args?: string[];
   /** 环境变量 */
   env?: Record<string, string>;
+  /** 工作目录（stdio 类型） */
+  cwd?: string;
   /** URL（http/sse 类型） */
   url?: string;
+  /** 请求头（http/sse 类型） */
+  headers?: Record<string, string>;
 }
 
 /**
