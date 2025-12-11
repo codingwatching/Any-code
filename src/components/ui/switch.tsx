@@ -51,6 +51,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           ref={ref}
           type="checkbox"
           checked={checked}
+          onChange={() => {}} // 添加空 onChange 避免 React 警告
           disabled={disabled}
           className="sr-only"
           {...props}
