@@ -290,6 +290,7 @@ pub async fn execute_gemini(
 
     // Find Gemini binary
     let gemini_path = find_gemini_binary()?;
+    let is_wsl = gemini_path.starts_with("WSL:");
 
     // Load configuration
     let config = load_gemini_config().unwrap_or_default();
@@ -329,9 +330,15 @@ pub async fn execute_gemini(
             args.push("--include-directories".to_string());
             // For WSL mode, convert Windows paths to WSL paths
             #[cfg(target_os = "windows")]
-            let dirs_str = if gemini_path.starts_with("WSL:") {
+            let dirs_str = if is_wsl {
+                let wsl_runtime = wsl_utils::get_gemini_wsl_runtime();
                 dirs.iter()
-                    .map(|d| wsl_utils::windows_to_wsl_path(d))
+                    .map(|d| {
+                        wsl_utils::windows_to_wsl_path_with_distro(
+                            d,
+                            wsl_runtime.distro.as_deref(),
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(",")
             } else {
@@ -352,19 +359,24 @@ pub async fn execute_gemini(
     // Command line arguments have length limits and special character issues on Windows
 
     // Build command based on execution mode (native or WSL)
-    let cmd = if gemini_path.starts_with("WSL:") {
+    let cmd = if is_wsl {
         // WSL mode
         #[cfg(target_os = "windows")]
         {
             let wsl_runtime = wsl_utils::get_gemini_wsl_runtime();
+            let gemini_program = gemini_path
+                .strip_prefix("WSL:")
+                .filter(|s| !s.is_empty())
+                .unwrap_or("gemini");
             log::info!(
-                "Gemini command (WSL): gemini {:?} in distro {:?}",
+                "Gemini command (WSL): {} {:?} in distro {:?}",
+                gemini_program,
                 args,
                 wsl_runtime.distro
             );
 
             let mut cmd = wsl_utils::build_wsl_command_async(
-                "gemini",
+                gemini_program,
                 &args,
                 Some(&options.project_path),
                 wsl_runtime.distro.as_deref(),

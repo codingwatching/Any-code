@@ -314,22 +314,16 @@ impl WslConfig {
         let codex_path_in_wsl = check_wsl_codex(Some(distro_name));
         info!("[WSL] Codex path in WSL: {:?}", codex_path_in_wsl);
 
-        let codex_dir_unc = if let Some(ref home) = wsl_home {
-            let wsl_codex_path = format!("{}/.codex", home);
-            let unc_path = build_wsl_unc_path(&wsl_codex_path, distro_name);
-            if unc_path.exists() {
-                info!("[WSL] Found .codex directory at: {:?}", unc_path);
-                Some(unc_path)
-            } else {
-                warn!("[WSL] .codex directory not found at: {:?}", unc_path);
-                None
-            }
-        } else {
-            None
-        };
+        // .codex 目录可能尚未创建（首次运行 Codex），这里不以 exists() 作为启用条件。
+        // 直接构建 UNC 路径，后续读写会话时可按需创建目录。
+        let wsl_home_for_codex = wsl_home.as_deref().unwrap_or("/root");
+        let codex_dir_unc = Some(build_wsl_unc_path(
+            &format!("{}/.codex", wsl_home_for_codex),
+            distro_name,
+        ));
 
-        // 只有当能访问 .codex 目录且 Codex 已安装时才启用 WSL 模式
-        let enabled = codex_dir_unc.is_some() && codex_path_in_wsl.is_some();
+        // 只要 Codex CLI 已安装就启用 WSL 模式（会话目录可延迟创建）
+        let enabled = codex_path_in_wsl.is_some();
 
         info!(
             "[WSL] Configuration complete: enabled={}, distro={:?}",
@@ -826,7 +820,11 @@ pub fn get_wsl_codex_version(distro: Option<&str>) -> Option<String> {
         cmd.arg("-d").arg(d);
     }
 
-    cmd.args(["--", "codex", "--version"]);
+    // 优先使用探测到的绝对路径，避免非交互环境 PATH 不包含 nvm/volta 等安装目录
+    let program = check_wsl_codex(distro).unwrap_or_else(|| "codex".to_string());
+    cmd.arg("--");
+    cmd.arg(&program);
+    cmd.arg("--version");
     cmd.creation_flags(CREATE_NO_WINDOW);
 
     match cmd.output() {
@@ -967,7 +965,11 @@ pub fn get_wsl_gemini_version(distro: Option<&str>) -> Option<String> {
         cmd.arg("-d").arg(d);
     }
 
-    cmd.args(["--", "gemini", "--version"]);
+    // 优先使用探测到的绝对路径，避免非交互环境 PATH 不包含 nvm/volta 等安装目录
+    let program = check_wsl_gemini(distro).unwrap_or_else(|| "gemini".to_string());
+    cmd.arg("--");
+    cmd.arg(&program);
+    cmd.arg("--version");
     cmd.creation_flags(CREATE_NO_WINDOW);
 
     match cmd.output() {
@@ -1143,6 +1145,43 @@ pub fn get_wsl_gemini_dir() -> Option<PathBuf> {
 // 路径转换函数
 // ============================================================================
 
+/// 尝试把 Windows 下的 WSL UNC 路径解析为 WSL 内路径。
+///
+/// 支持：
+/// - \\wsl.localhost\\Ubuntu\\home\\user\\proj -> (/home/user/proj)
+/// - \\wsl$\\Ubuntu\\home\\user\\proj -> (/home/user/proj)
+///
+/// 返回 (distro, wsl_path)
+fn try_parse_wsl_unc_path(windows_path: &str) -> Option<(String, String)> {
+    let raw = windows_path.trim();
+    if !(raw.starts_with("\\\\") || raw.starts_with("//")) {
+        return None;
+    }
+
+    // 统一为反斜杠，便于解析
+    let normalized = raw.replace('/', "\\");
+
+    let mut parts = normalized
+        .trim_start_matches("\\\\")
+        .split('\\')
+        .filter(|s| !s.is_empty());
+
+    let host = parts.next()?.to_lowercase();
+    if host != "wsl.localhost" && host != "wsl$" && host != "wsl" {
+        return None;
+    }
+
+    let distro = parts.next()?.to_string();
+    let rest: Vec<&str> = parts.collect();
+    let wsl_path = if rest.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", rest.join("/"))
+    };
+
+    Some((distro, wsl_path))
+}
+
 /// 将 Windows 路径转换为 WSL 路径
 ///
 /// # Examples
@@ -1151,9 +1190,15 @@ pub fn get_wsl_gemini_dir() -> Option<PathBuf> {
 /// assert_eq!(windows_to_wsl_path("D:\\Projects"), "/mnt/d/Projects");
 /// ```
 pub fn windows_to_wsl_path(windows_path: &str) -> String {
-    // 处理 UNC 路径（不支持）
+    // 处理 WSL UNC 路径（支持）
+    if let Some((_distro, wsl_path)) = try_parse_wsl_unc_path(windows_path) {
+        log::debug!("[WSL] UNC->WSL Path converted: {} -> {}", windows_path, wsl_path);
+        return wsl_path;
+    }
+
+    // 其他 UNC 路径（不支持）
     if windows_path.starts_with("\\\\") {
-        log::warn!("[WSL] UNC paths are not supported: {}", windows_path);
+        log::warn!("[WSL] UNC paths are not supported (except WSL): {}", windows_path);
         return windows_path.to_string();
     }
 
@@ -1174,6 +1219,64 @@ pub fn windows_to_wsl_path(windows_path: &str) -> String {
 
     // 如果已经是 WSL 路径或相对路径，统一分隔符后返回
     windows_path.replace('\\', "/")
+}
+
+/// 将 Windows 路径转换为 WSL 路径（优先使用 wslpath，自动适配不同发行版的挂载策略）。
+///
+/// - 若输入是 \\wsl... UNC，则直接解析为 WSL 路径（同时可用于推断 distro）
+/// - 若输入是盘符路径（C:\\...），在 Windows 上尝试：wsl [-d <distro>] -- wslpath -a -u <path>
+/// - 失败则回退到 windows_to_wsl_path 的 /mnt/<drive> 规则
+#[cfg(target_os = "windows")]
+pub fn windows_to_wsl_path_with_distro(windows_path: &str, distro: Option<&str>) -> String {
+    if windows_path.trim().is_empty() {
+        return windows_path.to_string();
+    }
+
+    // 已是 WSL 路径
+    if windows_path.starts_with('/') {
+        return windows_path.to_string();
+    }
+
+    // WSL UNC 路径
+    if let Some((_d, wsl_path)) = try_parse_wsl_unc_path(windows_path) {
+        return wsl_path;
+    }
+
+    // 盘符路径：尽量用 wslpath 来得到正确挂载点
+    if windows_path.len() >= 2 && windows_path.chars().nth(1) == Some(':') {
+        let mut cmd = Command::new("wsl");
+        if let Some(d) = distro {
+            cmd.arg("-d").arg(d);
+        }
+        cmd.arg("--");
+        cmd.arg("wslpath");
+        cmd.arg("-a");
+        cmd.arg("-u");
+        cmd.arg(windows_path);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                let wsl_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !wsl_path.is_empty() && wsl_path.starts_with('/') {
+                    log::debug!(
+                        "[WSL] wslpath converted (distro={:?}): {} -> {}",
+                        distro,
+                        windows_path,
+                        wsl_path
+                    );
+                    return wsl_path;
+                }
+            }
+        }
+    }
+
+    windows_to_wsl_path(windows_path)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn windows_to_wsl_path_with_distro(windows_path: &str, _distro: Option<&str>) -> String {
+    windows_to_wsl_path(windows_path)
 }
 
 /// 将 WSL 路径转换为 Windows 路径
@@ -1272,15 +1375,37 @@ pub fn build_wsl_command_async(
 ) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new("wsl");
 
+    // 如果 working_dir 是 \\wsl... UNC，则优先用其 distro（避免用户选择的目录在另一个发行版里）
+    let (effective_distro, effective_cd) = match working_dir {
+        Some(dir) => {
+            if let Some((unc_distro, wsl_dir)) = try_parse_wsl_unc_path(dir) {
+                if let Some(d) = distro {
+                    if !d.eq_ignore_ascii_case(&unc_distro) {
+                        warn!(
+                            "[WSL] working_dir points to distro '{}' but config distro is '{}'; using '{}'",
+                            unc_distro, d, unc_distro
+                        );
+                    }
+                }
+                (Some(unc_distro), Some(wsl_dir))
+            } else {
+                (
+                    distro.map(|d| d.to_string()),
+                    Some(windows_to_wsl_path_with_distro(dir, distro)),
+                )
+            }
+        }
+        None => (distro.map(|d| d.to_string()), None),
+    };
+
     // 指定发行版（如果提供）
-    if let Some(d) = distro {
+    if let Some(ref d) = effective_distro {
         cmd.arg("-d").arg(d);
     }
 
     // 设置工作目录（转换为 WSL 路径）
-    if let Some(dir) = working_dir {
-        let wsl_dir = windows_to_wsl_path(dir);
-        cmd.arg("--cd").arg(&wsl_dir);
+    if let Some(wsl_dir) = effective_cd.as_deref() {
+        cmd.arg("--cd").arg(wsl_dir);
     }
 
     // 添加分隔符和程序
@@ -1297,8 +1422,8 @@ pub fn build_wsl_command_async(
 
     log::debug!(
         "[WSL] Built async command: wsl -d {:?} --cd {:?} -- {} {:?}",
-        distro,
-        working_dir.map(windows_to_wsl_path),
+        effective_distro,
+        effective_cd,
         program,
         args
     );
@@ -1338,6 +1463,16 @@ mod tests {
         );
         assert_eq!(windows_to_wsl_path("c:\\lower"), "/mnt/c/lower");
         assert_eq!(windows_to_wsl_path("C:\\"), "/mnt/c/");
+
+        // WSL UNC paths
+        assert_eq!(
+            windows_to_wsl_path(r"\\wsl.localhost\Ubuntu\home\user\proj"),
+            "/home/user/proj"
+        );
+        assert_eq!(
+            windows_to_wsl_path(r"\\wsl$\Debian\mnt\c\Users\me"),
+            "/mnt/c/Users/me"
+        );
     }
 
     #[test]

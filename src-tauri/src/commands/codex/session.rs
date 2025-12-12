@@ -708,8 +708,11 @@ fn build_wsl_codex_command(
 
         if let Some(ref file) = options.output_file {
             args.push("-o".to_string());
-            // Convert output file path to WSL format
-            args.push(wsl_utils::windows_to_wsl_path(file));
+            // Convert output file path to WSL format (supports UNC + wslpath)
+            args.push(wsl_utils::windows_to_wsl_path_with_distro(
+                file,
+                wsl_config.distro.as_deref(),
+            ));
         }
 
         if options.skip_git_repo_check {
@@ -722,8 +725,13 @@ fn build_wsl_codex_command(
 
     // Build WSL command with path conversion
     // project_path is Windows format (C:\...), will be converted to WSL format (/mnt/c/...)
+    let codex_program = wsl_config
+        .codex_path_in_wsl
+        .as_deref()
+        .unwrap_or("codex");
+
     let mut cmd = wsl_utils::build_wsl_command_async(
-        "codex",
+        codex_program,
         &args,
         Some(&options.project_path),
         wsl_config.distro.as_deref(),
@@ -736,9 +744,13 @@ fn build_wsl_codex_command(
     }
 
     log::info!(
-        "[Codex WSL] Command built: wsl -d {:?} --cd {} -- codex {:?}",
+        "[Codex WSL] Command built: wsl -d {:?} --cd {} -- {} {:?}",
         wsl_config.distro,
-        wsl_utils::windows_to_wsl_path(&options.project_path),
+        wsl_utils::windows_to_wsl_path_with_distro(
+            &options.project_path,
+            wsl_config.distro.as_deref(),
+        ),
+        codex_program,
         args
     );
 
