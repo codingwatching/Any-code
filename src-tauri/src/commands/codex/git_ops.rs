@@ -697,8 +697,6 @@ pub async fn revert_codex_to_prompt(
         RewindMode::CodeOnly => {
             log::info!("[Codex Rewind] Reverting code to state before prompt #{}", prompt_index);
 
-            let record = git_record.unwrap();
-
             // Stash uncommitted changes
             simple_git::git_stash_save(
                 &project_path,
@@ -709,37 +707,107 @@ pub async fn revert_codex_to_prompt(
             )
             .map_err(|e| format!("Failed to stash changes: {}", e))?;
 
-            // Get current HEAD to revert everything from commit_before to HEAD
-            let current_head = simple_git::git_current_commit(&project_path)
-                .map_err(|e| format!("Failed to get current commit: {}", e))?;
+            // Load ALL git records for this session
+            let all_git_records = load_codex_git_records(&session_id)?;
 
-            // Use git revert to undo all changes from commit_before to HEAD
-            let revert_result = simple_git::git_revert_range(
-                &project_path,
-                &record.commit_before,
-                &current_head,
-                &format!("[Codex Revert] 回滚到提示词 #{} 之前的代码状态", prompt_index),
-            )
-            .map_err(|e| format!("Failed to revert code: {}", e))?;
+            // Filter records for prompt_index and onwards, then sort by index descending
+            let mut records_to_revert: Vec<&CodexPromptGitRecord> = all_git_records
+                .records
+                .iter()
+                .filter(|r| r.prompt_index >= prompt_index)
+                .collect();
 
-            if !revert_result.success {
-                // If revert fails (conflicts), fall back to reset
-                log::warn!("[Codex Rewind] Git revert failed, falling back to reset: {}", revert_result.message);
-                simple_git::git_reset_hard(&project_path, &record.commit_before)
-                    .map_err(|e| format!("Failed to reset code: {}", e))?;
+            // Sort by index descending (newest first)
+            records_to_revert.sort_by(|a, b| b.prompt_index.cmp(&a.prompt_index));
+
+            log::info!(
+                "[Codex Precise Revert] Found {} records to revert (prompts {} and onwards)",
+                records_to_revert.len(),
+                prompt_index
+            );
+
+            // Revert each record's commit_before..commit_after in reverse order
+            let mut total_reverted = 0;
+            let mut revert_failed = false;
+            let mut first_commit_before: Option<String> = None;
+
+            for record in &records_to_revert {
+                // Skip if no commit_after (AI didn't make any changes)
+                let commit_after = match &record.commit_after {
+                    Some(c) if c != &record.commit_before => c.clone(),
+                    _ => {
+                        log::debug!("[Codex Precise Revert] Skipping prompt #{} - no code changes", record.prompt_index);
+                        continue;
+                    }
+                };
+
+                // Save the first (oldest) commit_before for fallback
+                if first_commit_before.is_none() {
+                    first_commit_before = Some(record.commit_before.clone());
+                }
+
+                log::info!(
+                    "[Codex Precise Revert] Reverting prompt #{}: {}..{}",
+                    record.prompt_index,
+                    &record.commit_before[..8.min(record.commit_before.len())],
+                    &commit_after[..8.min(commit_after.len())]
+                );
+
+                let revert_result = simple_git::git_revert_range(
+                    &project_path,
+                    &record.commit_before,
+                    &commit_after,
+                    &format!("[Codex Revert] 撤回提示词 #{} 的代码更改", record.prompt_index),
+                );
+
+                match revert_result {
+                    Ok(result) if result.success => {
+                        total_reverted += result.commits_reverted;
+                        log::info!(
+                            "[Codex Precise Revert] Successfully reverted prompt #{} ({} commits)",
+                            record.prompt_index,
+                            result.commits_reverted
+                        );
+                    }
+                    Ok(result) => {
+                        log::warn!(
+                            "[Codex Precise Revert] Revert conflict for prompt #{}: {}",
+                            record.prompt_index,
+                            result.message
+                        );
+                        revert_failed = true;
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("[Codex Precise Revert] Revert failed for prompt #{}: {}", record.prompt_index, e);
+                        revert_failed = true;
+                        break;
+                    }
+                }
+            }
+
+            // If revert failed due to conflicts, fall back to reset (last resort)
+            if revert_failed {
+                if let Some(fallback_commit) = first_commit_before {
+                    log::warn!(
+                        "[Codex Precise Revert] Falling back to reset --hard to {}",
+                        &fallback_commit[..8.min(fallback_commit.len())]
+                    );
+                    simple_git::git_reset_hard(&project_path, &fallback_commit)
+                        .map_err(|e| format!("Failed to reset code: {}", e))?;
+                }
             }
 
             log::info!(
-                "[Codex Rewind] Successfully reverted code to state before prompt #{} (reverted {} commits)",
+                "[Codex Rewind] Successfully reverted code to state before prompt #{} (reverted {} commits from {} prompts)",
                 prompt_index,
-                revert_result.commits_reverted
+                total_reverted,
+                records_to_revert.len()
             );
         }
 
         RewindMode::Both => {
             log::info!("[Codex Rewind] Reverting both to state before prompt #{}", prompt_index);
-
-            let record = git_record.unwrap();
 
             // Stash uncommitted changes
             simple_git::git_stash_save(
@@ -751,30 +819,102 @@ pub async fn revert_codex_to_prompt(
             )
             .map_err(|e| format!("Failed to stash changes: {}", e))?;
 
-            // Get current HEAD to revert everything from commit_before to HEAD
-            let current_head = simple_git::git_current_commit(&project_path)
-                .map_err(|e| format!("Failed to get current commit: {}", e))?;
+            // Load ALL git records for this session
+            let all_git_records = load_codex_git_records(&session_id)?;
 
-            // Use git revert to undo all changes from commit_before to HEAD
-            let revert_result = simple_git::git_revert_range(
-                &project_path,
-                &record.commit_before,
-                &current_head,
-                &format!("[Codex Revert] 回滚到提示词 #{} 之前的代码状态", prompt_index),
-            )
-            .map_err(|e| format!("Failed to revert code: {}", e))?;
+            // Filter records for prompt_index and onwards, then sort by index descending
+            let mut records_to_revert: Vec<&CodexPromptGitRecord> = all_git_records
+                .records
+                .iter()
+                .filter(|r| r.prompt_index >= prompt_index)
+                .collect();
 
-            if !revert_result.success {
-                // If revert fails (conflicts), fall back to reset
-                log::warn!("[Codex Rewind] Git revert failed, falling back to reset: {}", revert_result.message);
-                simple_git::git_reset_hard(&project_path, &record.commit_before)
-                    .map_err(|e| format!("Failed to reset code: {}", e))?;
+            // Sort by index descending (newest first)
+            records_to_revert.sort_by(|a, b| b.prompt_index.cmp(&a.prompt_index));
+
+            log::info!(
+                "[Codex Precise Revert] Found {} records to revert (prompts {} and onwards)",
+                records_to_revert.len(),
+                prompt_index
+            );
+
+            // Revert each record's commit_before..commit_after in reverse order
+            let mut total_reverted = 0;
+            let mut revert_failed = false;
+            let mut first_commit_before: Option<String> = None;
+
+            for record in &records_to_revert {
+                // Skip if no commit_after (AI didn't make any changes)
+                let commit_after = match &record.commit_after {
+                    Some(c) if c != &record.commit_before => c.clone(),
+                    _ => {
+                        log::debug!("[Codex Precise Revert] Skipping prompt #{} - no code changes", record.prompt_index);
+                        continue;
+                    }
+                };
+
+                // Save the first (oldest) commit_before for fallback
+                if first_commit_before.is_none() {
+                    first_commit_before = Some(record.commit_before.clone());
+                }
+
+                log::info!(
+                    "[Codex Precise Revert] Reverting prompt #{}: {}..{}",
+                    record.prompt_index,
+                    &record.commit_before[..8.min(record.commit_before.len())],
+                    &commit_after[..8.min(commit_after.len())]
+                );
+
+                let revert_result = simple_git::git_revert_range(
+                    &project_path,
+                    &record.commit_before,
+                    &commit_after,
+                    &format!("[Codex Revert] 撤回提示词 #{} 的代码更改", record.prompt_index),
+                );
+
+                match revert_result {
+                    Ok(result) if result.success => {
+                        total_reverted += result.commits_reverted;
+                        log::info!(
+                            "[Codex Precise Revert] Successfully reverted prompt #{} ({} commits)",
+                            record.prompt_index,
+                            result.commits_reverted
+                        );
+                    }
+                    Ok(result) => {
+                        log::warn!(
+                            "[Codex Precise Revert] Revert conflict for prompt #{}: {}",
+                            record.prompt_index,
+                            result.message
+                        );
+                        revert_failed = true;
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("[Codex Precise Revert] Revert failed for prompt #{}: {}", record.prompt_index, e);
+                        revert_failed = true;
+                        break;
+                    }
+                }
+            }
+
+            // If revert failed due to conflicts, fall back to reset (last resort)
+            if revert_failed {
+                if let Some(fallback_commit) = first_commit_before {
+                    log::warn!(
+                        "[Codex Precise Revert] Falling back to reset --hard to {}",
+                        &fallback_commit[..8.min(fallback_commit.len())]
+                    );
+                    simple_git::git_reset_hard(&project_path, &fallback_commit)
+                        .map_err(|e| format!("Failed to reset code: {}", e))?;
+                }
             }
 
             log::info!(
-                "[Codex Rewind] Successfully reverted code to state before prompt #{} (reverted {} commits)",
+                "[Codex Rewind] Successfully reverted code to state before prompt #{} (reverted {} commits from {} prompts)",
                 prompt_index,
-                revert_result.commits_reverted
+                total_reverted,
+                records_to_revert.len()
             );
 
             // Truncate session
