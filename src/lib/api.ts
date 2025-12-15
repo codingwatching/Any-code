@@ -202,6 +202,25 @@ export interface RewindCapabilities {
 }
 
 /**
+ * Information about the safety of a git reset operation
+ * Used to warn users when reverting might lose commits from other engines or user manual commits
+ */
+export interface ResetSafetyInfo {
+  /** Number of commits that will be lost */
+  commitsToLose: number;
+  /** Whether there are commits from other engines (Claude/Codex/Gemini) */
+  hasOtherEngineCommits: boolean;
+  /** Whether there are user manual commits */
+  hasUserCommits: boolean;
+  /** List of commit summaries that will be lost (max 10) */
+  commitsSummary: string[];
+  /** Whether it's safe to proceed without warning */
+  safeToProceed: boolean;
+  /** Warning message if not safe */
+  warning: string | null;
+}
+
+/**
  * A record of a user prompt
  */
 export interface PromptRecord {
@@ -2580,6 +2599,36 @@ export const api = {
     } catch (error) {
       console.error("Failed to check/init Git:", error);
       return false;
+    }
+  },
+
+  /**
+   * Check if a git reset operation is safe
+   * This prevents accidentally reverting to a much older version when
+   * multiple engines or user manual commits are involved
+   */
+  async checkResetSafety(
+    projectPath: string,
+    targetCommit: string,
+    currentEngine: string
+  ): Promise<ResetSafetyInfo> {
+    try {
+      return await invoke<ResetSafetyInfo>("check_reset_safety", {
+        projectPath,
+        targetCommit,
+        currentEngine,
+      });
+    } catch (error) {
+      console.error("Failed to check reset safety:", error);
+      // Return a safe default that allows proceeding
+      return {
+        commitsToLose: 0,
+        hasOtherEngineCommits: false,
+        hasUserCommits: false,
+        commitsSummary: [],
+        safeToProceed: true,
+        warning: null,
+      };
     }
   },
 
