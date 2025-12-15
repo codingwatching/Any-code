@@ -15,9 +15,77 @@ interface CodeBlockRendererProps {
   syntaxTheme: any;
 }
 
+/**
+ * 检测浏览器是否支持语法高亮所需的正则表达式特性
+ * 主要检测 lookbehind assertions (旧版 Safari/WebKit 不支持)
+ */
+const checkSyntaxHighlightSupport = (() => {
+  let cachedResult: boolean | null = null;
+
+  return (): boolean => {
+    if (cachedResult !== null) {
+      return cachedResult;
+    }
+
+    try {
+      // 测试 lookbehind assertions 支持
+      new RegExp('(?<=test)');
+      cachedResult = true;
+    } catch {
+      cachedResult = false;
+    }
+
+    return cachedResult;
+  };
+})();
+
+/**
+ * 纯文本代码块 Fallback 组件（提取重复代码）
+ */
+interface PlainTextCodeBlockProps {
+  language: string;
+  code: string;
+  copyState: 'idle' | 'success' | 'error';
+  onCopy: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}
+
+const PlainTextCodeBlock: React.FC<PlainTextCodeBlockProps> = ({
+  language,
+  code,
+  copyState,
+  onCopy
+}) => {
+  const buttonLabel =
+    copyState === 'success' ? '已复制!' : copyState === 'error' ? '复制失败' : '复制';
+
+  return (
+    <div className="my-3 rounded-lg overflow-hidden bg-muted/20 border border-border/50">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
+        <span className="text-xs font-mono text-muted-foreground">
+          {language} (Plain Text - 浏览器不支持语法高亮)
+        </span>
+        <button
+          onClick={onCopy}
+          className={cn(
+            "text-xs px-2 py-0.5 rounded-md transition-colors",
+            "bg-background/50 hover:bg-background hover:shadow-sm",
+            copyState === 'success' && "text-emerald-600 bg-emerald-500/10",
+            copyState === 'error' && "text-destructive bg-destructive/10"
+          )}
+        >
+          {buttonLabel}
+        </button>
+      </div>
+      <pre className="p-3 text-xs font-mono overflow-auto text-foreground/80 whitespace-pre-wrap">
+        {code}
+      </pre>
+    </div>
+  );
+};
+
 const CodeBlockRenderer: React.FC<CodeBlockRendererProps> = ({ language, code, syntaxTheme }) => {
   const [copyState, setCopyState] = useState<'idle' | 'success' | 'error'>('idle');
-  const [renderError, setRenderError] = useState<string | null>(null);
+  const [supportsSyntaxHighlight] = useState(() => checkSyntaxHighlightSupport());
   const resetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -28,7 +96,7 @@ const CodeBlockRenderer: React.FC<CodeBlockRendererProps> = ({ language, code, s
     };
   }, []);
 
-  const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleCopy = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -50,112 +118,78 @@ const CodeBlockRenderer: React.FC<CodeBlockRendererProps> = ({ language, code, s
     } finally {
       resetTimerRef.current = window.setTimeout(() => setCopyState('idle'), 2000);
     }
-  };
+  }, [code]);
 
   const buttonLabel =
     copyState === 'success' ? '已复制!' : copyState === 'error' ? '复制失败' : '复制';
 
-  // 如果语法高亮渲染失败，降级为纯文本显示
-  if (renderError) {
+  // 如果浏览器不支持语法高亮所需特性，降级为纯文本显示
+  if (!supportsSyntaxHighlight) {
     return (
-      <div className="my-3 rounded-lg overflow-hidden bg-muted/20 border border-border/50">
-        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-          <span className="text-xs font-mono text-muted-foreground">
-            {language} (Plain Text - 浏览器不支持语法高亮)
-          </span>
-          <button
-            onClick={handleCopy}
-            className={cn(
-              "text-xs px-2 py-0.5 rounded-md transition-colors",
-              "bg-background/50 hover:bg-background hover:shadow-sm",
-              copyState === 'success' && "text-emerald-600 bg-emerald-500/10",
-              copyState === 'error' && "text-destructive bg-destructive/10"
-            )}
-          >
-            {buttonLabel}
-          </button>
-        </div>
-        <pre className="p-3 text-xs font-mono overflow-auto text-foreground/80 whitespace-pre-wrap">
-          {code}
-        </pre>
-      </div>
+      <PlainTextCodeBlock
+        language={language}
+        code={code}
+        copyState={copyState}
+        onCopy={handleCopy}
+      />
     );
   }
 
-  // 使用 try-catch 包裹 SyntaxHighlighter 渲染
-  try {
-    return (
-      <div className="relative group my-3 rounded-lg overflow-hidden bg-muted/20">
-        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-muted-foreground opacity-70">
-              {language}
-            </span>
-          </div>
-          <button
-            onClick={handleCopy}
-            className={cn(
-              "text-xs px-2 py-0.5 rounded-md transition-all duration-200 opacity-0 group-hover:opacity-100",
-              "bg-background/50 hover:bg-background hover:shadow-sm",
-              copyState === 'success' && "text-emerald-600 bg-emerald-500/10",
-              copyState === 'error' && "text-destructive bg-destructive/10"
-            )}
-          >
-            {buttonLabel}
-          </button>
-        </div>
-
-        <div className="relative">
-          <SyntaxHighlighter
-            style={syntaxTheme}
-            language={language}
-            PreTag="div"
-            showLineNumbers={true}
-            wrapLines={true}
-            customStyle={{
-              margin: 0,
-              padding: '0.75rem',
-              background: 'transparent',
-              lineHeight: '1.5',
-              fontSize: '0.8rem',
-            }}
-            lineNumberStyle={{
-              minWidth: '2.5em',
-              paddingRight: '1em',
-              color: 'var(--color-muted-foreground)',
-              opacity: 0.5,
-              textAlign: 'right',
-            }}
-            codeTagProps={{
-              style: {
-                fontFamily: 'var(--font-mono)',
-                fontVariantLigatures: 'none',
-              }
-            }}
-          >
-            {code}
-          </SyntaxHighlighter>
-        </div>
-      </div>
-    );
-  } catch (error) {
-    console.error('[CodeBlockRenderer] Syntax highlighting failed:', error);
-    // 设置错误状态，触发降级渲染
-    setRenderError(error instanceof Error ? error.message : 'Unknown error');
-    // 返回降级的纯文本显示
-    return (
-      <div className="my-3 rounded-lg overflow-hidden bg-muted/20 border border-border/50">
-        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
-          <span className="text-xs font-mono text-muted-foreground">
-            {language} (Plain Text - 浏览器不支持语法高亮)
+  // 渲染语法高亮代码块
+  return (
+    <div className="relative group my-3 rounded-lg overflow-hidden bg-muted/20">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-muted-foreground opacity-70">
+            {language}
           </span>
         </div>
-        <pre className="p-3 text-xs font-mono overflow-auto text-foreground/80 whitespace-pre-wrap">
-          {code}
-        </pre>
+        <button
+          onClick={handleCopy}
+          className={cn(
+            "text-xs px-2 py-0.5 rounded-md transition-all duration-200 opacity-0 group-hover:opacity-100",
+            "bg-background/50 hover:bg-background hover:shadow-sm",
+            copyState === 'success' && "text-emerald-600 bg-emerald-500/10",
+            copyState === 'error' && "text-destructive bg-destructive/10"
+          )}
+        >
+          {buttonLabel}
+        </button>
       </div>
-    );
-  }
+
+      <div className="relative">
+        <SyntaxHighlighter
+          style={syntaxTheme}
+          language={language}
+          PreTag="div"
+          showLineNumbers={true}
+          wrapLines={true}
+          customStyle={{
+            margin: 0,
+            padding: '0.75rem',
+            background: 'transparent',
+            lineHeight: '1.5',
+            fontSize: '0.8rem',
+          }}
+          lineNumberStyle={{
+            minWidth: '2.5em',
+            paddingRight: '1em',
+            color: 'var(--color-muted-foreground)',
+            opacity: 0.5,
+            textAlign: 'right',
+          }}
+          codeTagProps={{
+            style: {
+              fontFamily: 'var(--font-mono)',
+              fontVariantLigatures: 'none',
+            }
+          }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
+    </div>
+  );
 };
 
 interface MessageContentProps {

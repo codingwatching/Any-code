@@ -182,9 +182,23 @@ impl ProjectStore {
                     // ✅ Fallback: 如果 first_message 为空，使用默认文本以确保会话能显示
                     // 这样即使所有用户消息都被过滤掉，会话仍然可见
                     let first_message = first_message_raw.or_else(|| {
-                        // 如果有 last_message_timestamp，说明会话确实有消息，只是被过滤了
-                        if last_message_timestamp.is_some() {
-                            Some(format!("Claude Code Session ({})", session_id))
+                        // 检查会话是否真的有内容：
+                        // 1. 有 last_message_timestamp，说明有消息
+                        // 2. 文件大小 > 100 字节（排除几乎空的会话文件）
+                        let has_content = last_message_timestamp.is_some()
+                            && path.metadata()
+                                .ok()
+                                .map(|m| m.len() > 100)
+                                .unwrap_or(false);
+
+                        if has_content {
+                            // 只显示 session_id 的前8位，避免 UI 过长
+                            let short_id = if session_id.len() >= 8 {
+                                &session_id[..8]
+                            } else {
+                                session_id
+                            };
+                            Some(format!("Resumed Session ({}...)", short_id))
                         } else {
                             // 真正的空会话
                             None
