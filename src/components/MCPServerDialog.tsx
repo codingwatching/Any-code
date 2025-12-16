@@ -198,13 +198,33 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
   };
 
   /**
-   * 解析 JSON 输入
+   * 解析 JSON 输入，支持两种格式：
+   * 1. 直接服务器配置：{ "type": "stdio", "command": "...", ... }
+   * 2. 完整 MCP 配置：{ "mcpServers": { "server-id": { ... } } }
    */
-  const parseJsonInput = (): MCPServerSpec | null => {
+  const parseJsonInput = (): { id?: string; spec: MCPServerSpec } | null => {
     try {
       const parsed = JSON.parse(jsonInput);
+
+      // 检测是否为完整 MCP 配置格式
+      if (parsed.mcpServers && typeof parsed.mcpServers === 'object') {
+        const serverIds = Object.keys(parsed.mcpServers);
+        if (serverIds.length === 0) {
+          setJsonError("mcpServers 中没有服务器配置");
+          return null;
+        }
+        if (serverIds.length > 1) {
+          setJsonError(`检测到多个服务器配置，将使用第一个: ${serverIds[0]}`);
+        }
+        const serverId = serverIds[0];
+        const serverSpec = parsed.mcpServers[serverId];
+        setJsonError(null);
+        return { id: serverId, spec: serverSpec as MCPServerSpec };
+      }
+
+      // 直接服务器配置格式
       setJsonError(null);
-      return parsed as MCPServerSpec;
+      return { spec: parsed as MCPServerSpec };
     } catch (e) {
       setJsonError(`JSON 解析错误: ${e instanceof Error ? e.message : "格式无效"}`);
       return null;
@@ -215,8 +235,23 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
    * 保存服务器
    */
   const handleSave = async () => {
+    let serverId = id.trim();
+
+    // JSON 模式下先解析获取可能的 ID
+    if (inputMode === "json") {
+      const result = parseJsonInput();
+      if (!result) {
+        return;
+      }
+      // 如果 JSON 中包含服务器 ID，使用它（仅在新建模式下）
+      if (result.id && !isEditMode) {
+        serverId = result.id;
+        setId(result.id); // 更新 UI 显示
+      }
+    }
+
     // 验证 ID
-    if (!id.trim()) {
+    if (!serverId) {
       alert("请输入服务器 ID");
       return;
     }
@@ -224,12 +259,12 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
     let spec: MCPServerSpec;
 
     if (inputMode === "json") {
-      // JSON 模式
-      const parsed = parseJsonInput();
-      if (!parsed) {
+      // JSON 模式（已在上面解析过，这里重新获取 spec）
+      const result = parseJsonInput();
+      if (!result) {
         return;
       }
-      spec = parsed;
+      spec = result.spec;
     } else {
       // 表单模式验证
       if (type === "stdio" && !command.trim()) {
@@ -262,7 +297,7 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
 
     try {
       // 调用 API
-      await api.mcpUpsertEngineServer(engine, id.trim(), spec);
+      await api.mcpUpsertEngineServer(engine, serverId, spec);
 
       // 成功后关闭对话框并刷新
       onSaved();
