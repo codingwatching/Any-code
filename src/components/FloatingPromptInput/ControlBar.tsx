@@ -82,6 +82,13 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onSend
 }) => {
   const { t } = useTranslation();
+
+  const contextWindowModel =
+    executionEngineConfig.engine === 'codex'
+      ? (session?.model || executionEngineConfig.codexModel)
+      : executionEngineConfig.engine === 'gemini'
+        ? (executionEngineConfig.geminiModel || session?.model)
+        : selectedModel;
   
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -172,7 +179,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
       {(executionEngineConfig.engine === 'claude' || executionEngineConfig.engine === 'codex') && hasMessages && messages && (
         <ContextWindowIndicator
           messages={messages}
-          model={selectedModel}
+          model={contextWindowModel}
           engine={executionEngineConfig.engine}
           show={true}
         />

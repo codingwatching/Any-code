@@ -157,7 +157,7 @@ const ClaudeCodeSessionInner: React.FC<ClaudeCodeSessionProps> = ({
   }>({});
 
   // ✅ Refactored: Use custom Hook for session cost calculation
-  const { stats: costStats, formatCost } = useSessionCostCalculation(messages);
+  const { stats: costStats, formatCost } = useSessionCostCalculation(messages, executionEngineConfig.engine);
 
   // ✅ Refactored: Use custom Hook for message filtering
   useEffect(() => {

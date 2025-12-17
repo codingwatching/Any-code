@@ -291,7 +291,10 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
           // 🔧 CRITICAL FIX: 创建会话级别的转换器实例,避免全局单例污染
           // 问题: 全局 codexConverter 单例会在多个标签页间共享状态(threadId, itemMap, toolResults)
           // 解决: 每个会话创建独立的转换器实例
-          const sessionCodexConverter = new CodexEventConverter();
+          const sessionCodexConverter = new CodexEventConverter({
+            // codex exec --json 的事件不包含 model 信息；这里用用户选择/会话记录作为默认模型
+            defaultModel: effectiveSession?.model || codexModel || null,
+          });
 
           // 🔧 FIX: Track current Codex session ID for channel isolation
           let currentCodexSessionId: string | null = null;

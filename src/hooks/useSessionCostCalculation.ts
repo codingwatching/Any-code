@@ -5,7 +5,7 @@
  * 参考：https://docs.claude.com/en/docs/claude-code/costs
  */
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { aggregateSessionCost } from '@/lib/sessionCost';
 import { formatCost as formatCostUtil, formatDuration } from '@/lib/pricing';
 import type { ClaudeStreamMessage } from '@/types/claude';
@@ -38,30 +38,98 @@ interface SessionCostResult {
   formatDuration: (seconds: number) => string;
 }
 
+const EMPTY_STATS: SessionCostStats = {
+  totalCost: 0,
+  totalTokens: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  durationSeconds: 0,
+  apiDurationSeconds: 0,
+};
+
 /**
  * 计算会话的 Token 成本和统计
  *
  * @param messages - 会话消息列表
+ * @param engine - 执行引擎（claude/codex/gemini）
  * @returns 成本统计对象
  *
  * @example
- * const { stats, formatCost } = useSessionCostCalculation(messages);
+ * const { stats, formatCost } = useSessionCostCalculation(messages, 'claude');
  * console.log(formatCost(stats.totalCost)); // "$0.0123"
  */
-export function useSessionCostCalculation(messages: ClaudeStreamMessage[]): SessionCostResult {
+export function useSessionCostCalculation(messages: ClaudeStreamMessage[], engine?: string): SessionCostResult {
+  const codexCacheRef = useRef<{
+    stats: SessionCostStats;
+    lastUsageFingerprint: string | null;
+    lastMessageCount: number;
+  }>({
+    stats: EMPTY_STATS,
+    lastUsageFingerprint: null,
+    lastMessageCount: 0,
+  });
+
   // 计算总成本和统计
   const stats = useMemo(() => {
-    if (messages.length === 0) {
-      return {
-        totalCost: 0,
-        totalTokens: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        durationSeconds: 0,
-        apiDurationSeconds: 0
+    // Codex 会话在流式过程中会产生大量 item.updated 等事件，但只有 turn.completed 才带 usage。
+    // 为避免每条事件都 O(n) 重算费用，Codex 仅在检测到新的 usage 时才重新聚合。
+    if (engine === 'codex') {
+      const cache = codexCacheRef.current;
+
+      if (messages.length === 0) {
+        cache.stats = EMPTY_STATS;
+        cache.lastUsageFingerprint = null;
+        cache.lastMessageCount = 0;
+        return cache.stats;
+      }
+
+      // 会话切换/重置：长度回退则清空缓存
+      if (messages.length < cache.lastMessageCount) {
+        cache.stats = EMPTY_STATS;
+        cache.lastUsageFingerprint = null;
+        cache.lastMessageCount = 0;
+      }
+
+      const last = messages[messages.length - 1] as any;
+      const usage = extractUsageCandidate(last);
+
+      // 末尾没有 usage -> 费用不可能变化，直接复用缓存
+      if (!usage) {
+        cache.lastMessageCount = messages.length;
+        return cache.stats;
+      }
+
+      const fingerprint = buildUsageFingerprint(last, usage, messages.length);
+      if (fingerprint === cache.lastUsageFingerprint) {
+        cache.lastMessageCount = messages.length;
+        return cache.stats;
+      }
+
+      const { totals, events, firstEventTimestampMs, lastEventTimestampMs } = aggregateSessionCost(messages);
+      const durationSeconds = calculateSessionDuration(messages, firstEventTimestampMs, lastEventTimestampMs);
+      const apiDurationSeconds = events.length * 5;
+
+      const nextStats: SessionCostStats = {
+        totalCost: totals.totalCost,
+        totalTokens: totals.totalTokens,
+        inputTokens: totals.inputTokens,
+        outputTokens: totals.outputTokens,
+        cacheReadTokens: totals.cacheReadTokens,
+        cacheWriteTokens: totals.cacheWriteTokens,
+        durationSeconds,
+        apiDurationSeconds,
       };
+
+      cache.stats = nextStats;
+      cache.lastUsageFingerprint = fingerprint;
+      cache.lastMessageCount = messages.length;
+      return nextStats;
+    }
+
+    if (messages.length === 0) {
+      return EMPTY_STATS;
     }
 
     const {
@@ -87,7 +155,7 @@ export function useSessionCostCalculation(messages: ClaudeStreamMessage[]): Sess
       durationSeconds,
       apiDurationSeconds
     };
-  }, [messages]);
+  }, [messages, engine]);
 
   return { 
     stats, 
@@ -101,16 +169,11 @@ function calculateSessionDuration(
   fallbackFirstEventMs?: number,
   fallbackLastEventMs?: number
 ): number {
-  const timestamps = messages
-    .map(extractTimestampMs)
-    .filter((value): value is number => typeof value === 'number');
-
-  if (timestamps.length >= 2) {
-    const first = Math.min(...timestamps);
-    const last = Math.max(...timestamps);
-    if (last >= first) {
-      return (last - first) / 1000;
-    }
+  // 绝大多数情况下 messages 是按时间顺序追加的；优先从两端取时间戳，避免 O(n) 扫描。
+  const first = findTimestampMsFromStart(messages);
+  const last = findTimestampMsFromEnd(messages);
+  if (typeof first === 'number' && typeof last === 'number' && last >= first) {
+    return (last - first) / 1000;
   }
 
   if (
@@ -122,6 +185,22 @@ function calculateSessionDuration(
   }
 
   return 0;
+}
+
+function findTimestampMsFromStart(messages: ClaudeStreamMessage[], maxScan = 25): number | undefined {
+  for (let i = 0; i < Math.min(messages.length, maxScan); i++) {
+    const ts = extractTimestampMs(messages[i]);
+    if (typeof ts === 'number') return ts;
+  }
+  return undefined;
+}
+
+function findTimestampMsFromEnd(messages: ClaudeStreamMessage[], maxScan = 25): number | undefined {
+  for (let i = messages.length - 1; i >= 0 && i >= messages.length - maxScan; i--) {
+    const ts = extractTimestampMs(messages[i]);
+    if (typeof ts === 'number') return ts;
+  }
+  return undefined;
 }
 
 function extractTimestampMs(message: ClaudeStreamMessage): number | undefined {
@@ -144,4 +223,38 @@ function extractTimestampMs(message: ClaudeStreamMessage): number | undefined {
   }
 
   return undefined;
+}
+
+function extractUsageCandidate(message: any): any | null {
+  const usage = message?.usage || message?.message?.usage || message?.codexMetadata?.usage;
+  return usage && typeof usage === 'object' ? usage : null;
+}
+
+function buildUsageFingerprint(message: any, usage: any, messageCount: number): string {
+  const timestamp = typeof message?.timestamp === 'string'
+    ? message.timestamp
+    : typeof message?.receivedAt === 'string'
+      ? message.receivedAt
+      : '';
+
+  // 仅提取稳定字段，避免把大对象 stringify 进指纹导致性能抖动
+  const input = Number(usage?.input_tokens) || 0;
+  const output = Number(usage?.output_tokens) || 0;
+  const cachedInput = Number(usage?.cached_input_tokens) || 0;
+  const cacheRead = Number(usage?.cache_read_tokens) || 0;
+  const cacheWrite = Number(usage?.cache_creation_tokens) || Number(usage?.cache_write_tokens) || 0;
+
+  const model = typeof message?.model === 'string' ? message.model : '';
+  const engine = typeof message?.engine === 'string' ? message.engine : '';
+
+  return [
+    messageCount,
+    timestamp,
+    engine,
+    model,
+    input,
+    cachedInput || cacheRead,
+    cacheWrite,
+    output,
+  ].join('|');
 }

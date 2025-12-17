@@ -80,6 +80,24 @@ export class CodexEventConverter {
   /** Stores tool results by call_id for later matching with tool_use */
   private toolResults: Map<string, { content: string; is_error: boolean }> = new Map();
 
+  constructor(options?: { defaultModel?: string | null }) {
+    if (options?.defaultModel && options.defaultModel.trim() !== '') {
+      this.activeModel = options.defaultModel;
+    }
+  }
+
+  /**
+   * Sets the active model for pricing/context calculations.
+   * Useful for `codex exec --json` streams where events don't include model metadata.
+   */
+  setActiveModel(model?: string | null): void {
+    if (typeof model === 'string' && model.trim() !== '') {
+      this.activeModel = model;
+      return;
+    }
+    this.activeModel = null;
+  }
+
   /**
    * Gets stored tool result by call_id
    * Used by UI to match tool_use with its result
