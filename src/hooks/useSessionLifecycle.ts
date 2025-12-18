@@ -151,26 +151,32 @@ export function useSessionLifecycle(config: UseSessionLifecycleConfig): UseSessi
           (msg as any).codexMetadata.usage = normalizeUsageData((msg as any).codexMetadata.usage);
         }
 
-        // 🆕 FIX: Retype slash command output messages from 'user' to 'system'
-        // Claude CLI returns slash command output (e.g., /cost, /context) wrapped in <local-command-stdout> tags
-        // These should be displayed as system messages, not user messages
+        // 🆕 FIX: Retype slash command related messages from 'user' to 'system'
+        // Claude CLI returns slash command output in various formats that should be system messages
         if (msg.type === 'user') {
           const content = msg.message?.content;
-          let hasCommandOutput = false;
+          let textContent = '';
 
+          // Extract text content
           if (typeof content === 'string') {
-            hasCommandOutput = content.includes('<local-command-stdout>');
+            textContent = content;
           } else if (Array.isArray(content)) {
-            hasCommandOutput = content.some((item: any) =>
-              item?.type === 'text' && item?.text?.includes('<local-command-stdout>')
-            );
+            textContent = content
+              .filter((item: any) => item?.type === 'text')
+              .map((item: any) => item?.text || '')
+              .join('\n');
           }
 
-          if (hasCommandOutput) {
+          // Check for various slash command output patterns
+          const isCommandOutput = textContent.includes('<local-command-stdout>');
+          const isCommandMeta = textContent.includes('<command-name>') || textContent.includes('<command-message>');
+          const isCommandError = textContent.includes('Unknown slash command:');
+
+          if (isCommandOutput || isCommandMeta || isCommandError) {
             return {
               ...msg,
               type: 'system' as const,
-              subtype: 'command-output'
+              subtype: isCommandOutput ? 'command-output' : isCommandError ? 'command-error' : 'command-meta'
             };
           }
         }

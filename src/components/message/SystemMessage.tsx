@@ -1,5 +1,5 @@
-import React from "react";
-import { Info, Terminal } from "lucide-react";
+import React, { useState } from "react";
+import { Info, Terminal, AlertCircle, Command, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toolRegistry } from "@/lib/toolRegistry";
 import type { ClaudeStreamMessage } from "@/types/claude";
@@ -240,26 +240,47 @@ export const SystemMessage: React.FC<SystemMessageProps> = ({
 
   // 🆕 处理斜杠命令输出（如 /cost, /context）
   if (subtype === "command-output") {
+    return <CommandOutputMessage message={message} className={className} />;
+  }
+
+  // 🆕 处理斜杠命令错误（如 "Unknown slash command: help"）
+  if (subtype === "command-error") {
+    return <CommandErrorMessage message={message} className={className} />;
+  }
+
+  // 🆕 处理斜杠命令元信息（如 <command-name>/cost</command-name>）
+  if (subtype === "command-meta") {
     const content = extractMessageContent(message);
     if (!content) return null;
+
+    // 提取命令名称
+    const commandNameMatch = content.match(/<command-name>([^<]+)<\/command-name>/);
+    const commandMessageMatch = content.match(/<command-message>([^<]+)<\/command-message>/);
+    const commandName = commandNameMatch ? commandNameMatch[1] : null;
+    const commandMessage = commandMessageMatch ? commandMessageMatch[1] : null;
 
     const formattedTime = formatTimestamp((message as any).receivedAt ?? (message as any).timestamp);
 
     return (
-      <div className={cn("my-4", className)}>
-        <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 text-sm">
-          <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
-            <Terminal className="h-3.5 w-3.5" />
-            命令输出
+      <div className={cn("my-2", className)}>
+        <div className="rounded-lg border border-border/30 bg-muted/20 px-3 py-2 text-sm">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
+            <Command className="h-3.5 w-3.5" />
+            {commandName ? (
+              <span>
+                执行命令 <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground/80">{commandName}</code>
+              </span>
+            ) : commandMessage ? (
+              <span>{commandMessage}</span>
+            ) : (
+              <span>命令执行中...</span>
+            )}
             {formattedTime && (
               <>
                 <span className="text-muted-foreground/40">•</span>
-                <span className="font-mono normal-case text-muted-foreground/70">{formattedTime}</span>
+                <span className="font-mono text-muted-foreground/70">{formattedTime}</span>
               </>
             )}
-          </div>
-          <div className="text-sm leading-relaxed text-muted-foreground">
-            {formatCommandOutput(content)}
           </div>
         </div>
       </div>
@@ -296,4 +317,108 @@ export const SystemMessage: React.FC<SystemMessageProps> = ({
 
 SystemMessage.displayName = "SystemMessage";
 
+/**
+ * 可折叠的命令输出消息组件
+ */
+const CommandOutputMessage: React.FC<{ message: ClaudeStreamMessage; className?: string }> = ({
+  message,
+  className,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true); // 默认展开
+  const content = extractMessageContent(message);
+  if (!content) return null;
 
+  const formattedTime = formatTimestamp((message as any).receivedAt ?? (message as any).timestamp);
+
+  return (
+    <div className={cn("my-4", className)}>
+      <div className="rounded-lg border border-border/50 bg-muted/30 text-sm overflow-hidden">
+        {/* 可点击的头部 */}
+        <div
+          className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors select-none"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
+            <Terminal className="h-3.5 w-3.5" />
+            命令输出
+            {formattedTime && (
+              <>
+                <span className="text-muted-foreground/40">•</span>
+                <span className="font-mono normal-case text-muted-foreground/70">{formattedTime}</span>
+              </>
+            )}
+          </div>
+          <div className="text-muted-foreground/60 hover:text-muted-foreground transition-colors">
+            {isExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </div>
+        </div>
+
+        {/* 可折叠的内容 */}
+        {isExpanded && (
+          <div className="px-4 pb-3 text-sm leading-relaxed text-muted-foreground border-t border-border/30">
+            <div className="pt-3">
+              {formatCommandOutput(content)}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * 可折叠的命令错误消息组件
+ */
+const CommandErrorMessage: React.FC<{ message: ClaudeStreamMessage; className?: string }> = ({
+  message,
+  className,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true); // 默认展开
+  const content = extractMessageContent(message);
+  if (!content) return null;
+
+  const formattedTime = formatTimestamp((message as any).receivedAt ?? (message as any).timestamp);
+
+  return (
+    <div className={cn("my-4", className)}>
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-sm overflow-hidden">
+        {/* 可点击的头部 */}
+        <div
+          className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-destructive/10 transition-colors select-none"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-destructive/80">
+            <AlertCircle className="h-3.5 w-3.5" />
+            命令错误
+            {formattedTime && (
+              <>
+                <span className="text-destructive/40">•</span>
+                <span className="font-mono normal-case text-destructive/70">{formattedTime}</span>
+              </>
+            )}
+          </div>
+          <div className="text-destructive/60 hover:text-destructive transition-colors">
+            {isExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </div>
+        </div>
+
+        {/* 可折叠的内容 */}
+        {isExpanded && (
+          <div className="px-4 pb-3 text-sm leading-relaxed text-destructive/90 border-t border-destructive/20">
+            <div className="pt-3">
+              {content}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
