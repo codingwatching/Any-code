@@ -496,19 +496,31 @@ export const UserMessage: React.FC<UserMessageProps> = ({
         </div>
       </MessageBubble>
       
-      {/* Footer: Timestamp (Hover Only) */}
-      <div className="absolute -bottom-5 right-1 text-[10px] text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none pointer-events-none">
-        {(message as any).sentAt || (message as any).timestamp ? formatTimestamp((message as any).sentAt || (message as any).timestamp) : ""}
-      </div>
         </div>
         </div>
-        
-        {/* Right Column: User Avatar */}
-        <div className="flex-shrink-0 mt-0.5 select-none">
-          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 dark:bg-indigo-500/20">
-            <User className="w-4 h-4" />
-          </div>
-        </div>
+
+        {/* Right Column: User Avatar with Tooltip */}
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex-shrink-0 mt-0.5 select-none cursor-default">
+                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 dark:bg-indigo-500/20 hover:bg-indigo-500/20 dark:hover:bg-indigo-500/30 transition-colors">
+                  <User className="w-4 h-4" />
+                </div>
+              </div>
+            </TooltipTrigger>
+            {((message as any).sentAt || (message as any).timestamp) && (
+              <TooltipContent side="left" className="text-[11px]">
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">You</span>
+                  <span className="text-muted-foreground">
+                    {formatTimestamp((message as any).sentAt || (message as any).timestamp)}
+                  </span>
+                </div>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
 

@@ -10,6 +10,7 @@ import { MessageActions } from "./MessageActions";
 import { cn } from "@/lib/utils";
 import { tokenExtractor } from "@/lib/tokenExtractor";
 import { formatTimestamp } from "@/lib/messageUtils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ClaudeStreamMessage } from '@/types/claude';
 
 interface AIMessageProps {
@@ -143,16 +144,37 @@ export const AIMessage: React.FC<AIMessageProps> = ({
   // Select icon based on engine
   const Icon = isGeminiMessage ? GeminiIcon : isCodexMessage ? CodexIcon : ClaudeIcon;
 
+  // 构建 tooltip 内容
+  const formattedTime = formatTimestamp((message as any).receivedAt ?? (message as any).timestamp);
+  const tooltipParts: string[] = [];
+  if (formattedTime) tooltipParts.push(formattedTime);
+  if (tokenStats) tooltipParts.push(tokenStats);
+
   return (
     <div className={cn("relative group", className)}>
       <MessageBubble variant="assistant">
         <div className="flex gap-4 items-start">
-          {/* Left Column: Avatar */}
-          <div className="flex-shrink-0 mt-0.5 select-none">
-            <div className="flex items-center justify-center w-7 h-7">
-              <Icon className={cn(isGeminiMessage || isCodexMessage ? "w-4 h-4" : "w-5 h-5")} />
-            </div>
-          </div>
+          {/* Left Column: Avatar with Tooltip */}
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex-shrink-0 mt-0.5 select-none cursor-default">
+                  <div className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-muted/50 transition-colors">
+                    <Icon className={cn(isGeminiMessage || isCodexMessage ? "w-4 h-4" : "w-5 h-5")} />
+                  </div>
+                </div>
+              </TooltipTrigger>
+              {tooltipParts.length > 0 && (
+                <TooltipContent side="right" className="text-[11px]">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">{assistantName}</span>
+                    {formattedTime && <span className="text-muted-foreground">{formattedTime}</span>}
+                    {tokenStats && <span className="font-mono text-muted-foreground">{tokenStats}</span>}
+                  </div>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
 
           {/* Right Column: Content */}
           <div className="flex-1 min-w-0 space-y-1 relative">
@@ -160,7 +182,7 @@ export const AIMessage: React.FC<AIMessageProps> = ({
             <div className="absolute -top-2 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
               <MessageActions content={text || thinkingContent} />
             </div>
-            
+
             {/* Main Content */}
             <div className="space-y-3">
               {text && (
@@ -190,27 +212,6 @@ export const AIMessage: React.FC<AIMessageProps> = ({
                     onLinkDetected={onLinkDetected}
                   />
                 </div>
-              )}
-            </div>
-
-            {/* Footer: Meta Info (Hover Only) */}
-            <div className="flex items-center justify-end gap-2 pt-1 text-[10px] text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none">
-              <span className="font-medium">{assistantName}</span>
-              {formatTimestamp((message as any).receivedAt ?? (message as any).timestamp) && (
-                <>
-                  <span>•</span>
-                  <span>
-                    {formatTimestamp((message as any).receivedAt ?? (message as any).timestamp)}
-                  </span>
-                </>
-              )}
-              {tokenStats && (
-                <>
-                  <span>•</span>
-                  <span className="font-mono opacity-80">
-                    {tokenStats}
-                  </span>
-                </>
               )}
             </div>
           </div>
