@@ -142,6 +142,48 @@ jobs:
           pattern: build-*
           merge-multiple: true
 
+      - name: Rename macOS updater files
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Find and rename macOS aarch64 updater files
+          AARCH64_TAR=$(find artifacts -path "*aarch64*" -name "*.app.tar.gz" ! -name "*.sig" -type f | head -n 1)
+          AARCH64_SIG=$(find artifacts -path "*aarch64*" -name "*.app.tar.gz.sig" -type f | head -n 1)
+          if [ -n "$AARCH64_TAR" ]; then
+            AARCH64_DIR=$(dirname "$AARCH64_TAR")
+            mv "$AARCH64_TAR" "$AARCH64_DIR/any-code_${VERSION}_aarch64.app.tar.gz"
+            echo "Renamed: $AARCH64_TAR -> $AARCH64_DIR/any-code_${VERSION}_aarch64.app.tar.gz"
+          fi
+          if [ -n "$AARCH64_SIG" ]; then
+            AARCH64_DIR=$(dirname "$AARCH64_SIG")
+            mv "$AARCH64_SIG" "$AARCH64_DIR/any-code_${VERSION}_aarch64.app.tar.gz.sig"
+            echo "Renamed: $AARCH64_SIG -> $AARCH64_DIR/any-code_${VERSION}_aarch64.app.tar.gz.sig"
+          fi
+
+          # Find and rename macOS x86_64 updater files
+          X64_TAR=$(find artifacts -path "*x86_64*" -name "*.app.tar.gz" ! -name "*.sig" -type f | head -n 1)
+          X64_SIG=$(find artifacts -path "*x86_64*" -name "*.app.tar.gz.sig" -type f | head -n 1)
+          if [ -n "$X64_TAR" ]; then
+            X64_DIR=$(dirname "$X64_TAR")
+            mv "$X64_TAR" "$X64_DIR/any-code_${VERSION}_x64.app.tar.gz"
+            echo "Renamed: $X64_TAR -> $X64_DIR/any-code_${VERSION}_x64.app.tar.gz"
+          fi
+          if [ -n "$X64_SIG" ]; then
+            X64_DIR=$(dirname "$X64_SIG")
+            mv "$X64_SIG" "$X64_DIR/any-code_${VERSION}_x64.app.tar.gz.sig"
+            echo "Renamed: $X64_SIG -> $X64_DIR/any-code_${VERSION}_x64.app.tar.gz.sig"
+          fi
+
+          # Also rename DMG files and other files with spaces
+          find artifacts -name "* *" -type f | while read file; do
+            newname=$(echo "$file" | sed 's/ /_/g')
+            mv "$file" "$newname"
+            echo "Renamed: $file -> $newname"
+          done
+
+          echo "All files in artifacts:"
+          find artifacts -type f
+
       - name: Generate latest.json for updater
         run: |
           # Extract version from tag (remove 'v' prefix)
@@ -150,10 +192,9 @@ jobs:
           # Get current date in RFC 3339 format
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Find signature files
-          # Note: macOS signature files are in platform-specific directories
-          DARWIN_AARCH64_SIG=$(find artifacts -path "*aarch64*" -name "*.app.tar.gz.sig" -type f | head -n 1)
-          DARWIN_X64_SIG=$(find artifacts -path "*x86_64*" -name "*.app.tar.gz.sig" -type f | head -n 1)
+          # Find signature files (after renaming)
+          DARWIN_AARCH64_SIG=$(find artifacts -name "*_aarch64.app.tar.gz.sig" -type f | head -n 1)
+          DARWIN_X64_SIG=$(find artifacts -name "*_x64.app.tar.gz.sig" -type f | head -n 1)
           LINUX_SIG=$(find artifacts -name "*.AppImage.sig" -type f | head -n 1)
           WINDOWS_MSI_SIG=$(find artifacts -name "*.msi.sig" -type f | head -n 1)
           WINDOWS_NSIS_SIG=$(find artifacts -name "*-setup.exe.sig" -type f | head -n 1)
