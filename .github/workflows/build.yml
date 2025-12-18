@@ -151,8 +151,9 @@ jobs:
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           # Find signature files
-          DARWIN_AARCH64_SIG=$(find artifacts -name "*aarch64.app.tar.gz.sig" -type f | head -n 1)
-          DARWIN_X64_SIG=$(find artifacts -name "*x64.app.tar.gz.sig" -type f | head -n 1)
+          # Note: macOS signature files are in platform-specific directories
+          DARWIN_AARCH64_SIG=$(find artifacts -path "*aarch64*" -name "*.app.tar.gz.sig" -type f | head -n 1)
+          DARWIN_X64_SIG=$(find artifacts -path "*x86_64*" -name "*.app.tar.gz.sig" -type f | head -n 1)
           LINUX_SIG=$(find artifacts -name "*.AppImage.sig" -type f | head -n 1)
           WINDOWS_MSI_SIG=$(find artifacts -name "*.msi.sig" -type f | head -n 1)
           WINDOWS_NSIS_SIG=$(find artifacts -name "*-setup.exe.sig" -type f | head -n 1)
