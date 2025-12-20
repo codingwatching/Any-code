@@ -897,7 +897,9 @@ fn do_get_codex_mode_config() -> CodexModeInfo {
     let (native_available, wsl_available, available_distros) = {
         let native = wsl_utils::is_native_codex_available();
         let distros = wsl_utils::get_wsl_distros();
-        let wsl = !distros.is_empty() && wsl_utils::check_wsl_codex(None).is_some();
+        // 可用性检查需要与用户选择的 distro 保持一致，避免默认发行版导致的误判
+        let wsl = !distros.is_empty()
+            && wsl_utils::check_wsl_codex(config.wsl_distro.as_deref()).is_some();
         (native, wsl, distros)
     };
 
