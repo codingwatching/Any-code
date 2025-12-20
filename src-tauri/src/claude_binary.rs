@@ -880,6 +880,8 @@ fn get_tool_aliases(tool: &str, env: &RuntimeEnvironment) -> Vec<String> {
         vec![
             format!("{}.exe", tool),
             format!("{}.cmd", tool),
+            format!("{}.bat", tool),
+            format!("{}.ps1", tool),
             tool.to_string(),
         ]
     } else {

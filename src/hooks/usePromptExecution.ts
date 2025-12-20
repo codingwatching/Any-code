@@ -488,6 +488,49 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
             }
           };
 
+          const parseCodexErrorPayload = (payload: string): { sessionId?: string; message: string } => {
+            try {
+              const data = JSON.parse(payload);
+              const sessionId = data?.session_id || data?.sessionId;
+              const message = data?.error?.message || data?.message || payload;
+              const detail = data?.error?.detail || data?.detail;
+              if (detail && typeof detail === 'string' && detail.trim().length > 0) {
+                return { sessionId, message: `${message}\n${detail}` };
+              }
+              return { sessionId, message };
+            } catch {
+              return { message: payload };
+            }
+          };
+
+          // Helper function to process Codex errors (确保退出加载态并清理监听，避免前端“无反应”)
+          const processCodexError = async (payload: string) => {
+            const parsed = parseCodexErrorPayload(payload);
+            setError(parsed.message);
+            setIsLoading(false);
+            hasActiveSessionRef.current = false;
+            isListeningRef.current = false;
+
+            // 清理监听器，避免后续事件污染
+            unlistenRefs.current.forEach(u => u && typeof u === 'function' && u());
+            unlistenRefs.current = [];
+
+            // 启动失败时不应保留 pending prompt
+            if (window.__codexPendingPrompt) {
+              delete window.__codexPendingPrompt;
+            }
+
+            // 继续处理队列（与完成逻辑一致）
+            if (queuedPromptsRef.current.length > 0) {
+              const [nextPrompt, ...remainingPrompts] = queuedPromptsRef.current;
+              setQueuedPrompts(remainingPrompts);
+
+              setTimeout(() => {
+                handleSendPrompt(nextPrompt.prompt, nextPrompt.model);
+              }, 100);
+            }
+          };
+
           // Helper function to attach session-specific listeners
           const attachCodexSessionListeners = async (sessionId: string) => {
             const specificOutputUnlisten = await listen<string>(`codex-output:${sessionId}`, (evt) => {
@@ -499,9 +542,13 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
               await processCodexComplete();
             });
 
+            const specificErrorUnlisten = await listen<string>(`codex-error:${sessionId}`, async (evt) => {
+              await processCodexError(evt.payload);
+            });
+
             // Replace existing listeners with session-specific ones
             unlistenRefs.current.forEach((u) => u && typeof u === 'function' && u());
-            unlistenRefs.current = [specificOutputUnlisten, specificCompleteUnlisten];
+            unlistenRefs.current = [specificOutputUnlisten, specificCompleteUnlisten, specificErrorUnlisten];
           };
 
           // 🔧 FIX: Listen for session init event to get session ID for channel isolation
@@ -535,10 +582,24 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
           });
 
           // Listen for Codex errors
-          const codexErrorUnlisten = await listen<string>('codex-error', (evt) => {
+          const codexErrorUnlisten = await listen<string>('codex-error', async (evt) => {
             // 🔧 FIX: Only process if this tab has an active session
             if (!hasActiveSessionRef.current) return;
-            setError(evt.payload);
+
+            const parsed = parseCodexErrorPayload(evt.payload);
+
+            // 🔒 Session Isolation：如果已确定会话 ID，则忽略其他会话的错误
+            if (parsed.sessionId && currentCodexSessionId && parsed.sessionId !== currentCodexSessionId) {
+              return;
+            }
+
+            // 如果尚未拿到 session_init，但错误里包含 session_id，也用于绑定会话（用于隔离与 UI 展示）
+            if (!currentCodexSessionId && parsed.sessionId) {
+              currentCodexSessionId = parsed.sessionId;
+              setClaudeSessionId(currentCodexSessionId);
+            }
+
+            await processCodexError(evt.payload);
           });
 
           // 🔧 FIX: 移除全局完成事件监听器,避免跨会话串流

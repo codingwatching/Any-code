@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -177,7 +178,8 @@ pub async fn execute_codex(
     let (cmd, prompt) = build_codex_command(&options, false, None)?;
 
     // Execute and stream output
-    execute_codex_process(cmd, prompt, options.project_path.clone(), app_handle).await
+    let session_id = format!("codex-{}", uuid::Uuid::new_v4());
+    execute_codex_process(session_id, cmd, prompt, options.project_path.clone(), app_handle).await
 }
 
 /// Resumes a previous Codex session
@@ -193,7 +195,15 @@ pub async fn resume_codex(
     let (cmd, prompt) = build_codex_command(&options, true, Some(&session_id))?;
 
     // Execute and stream output
-    execute_codex_process(cmd, prompt, options.project_path.clone(), app_handle).await
+    let channel_session_id = format!("codex-{}", uuid::Uuid::new_v4());
+    execute_codex_process(
+        channel_session_id,
+        cmd,
+        prompt,
+        options.project_path.clone(),
+        app_handle,
+    )
+    .await
 }
 
 /// Resumes the last Codex session
@@ -208,7 +218,8 @@ pub async fn resume_last_codex(
     let (cmd, prompt) = build_codex_command(&options, true, Some("--last"))?;
 
     // Execute and stream output
-    execute_codex_process(cmd, prompt, options.project_path.clone(), app_handle).await
+    let session_id = format!("codex-{}", uuid::Uuid::new_v4());
+    execute_codex_process(session_id, cmd, prompt, options.project_path.clone(), app_handle).await
 }
 
 /// Cancels a running Codex execution
@@ -771,9 +782,27 @@ fn build_wsl_codex_command(
         .as_deref()
         .unwrap_or("codex");
 
+    // 若 Codex 位于版本管理器目录（例如 /root/.nvm/.../bin/codex），则非交互 wsl -- 不会加载 NVM 环境，
+    // 需要显式注入 PATH，确保脚本内部能找到 node。
+    let (program_for_wsl, args_for_wsl) = if codex_program.starts_with('/') {
+        if let Some(path_env) =
+            wsl_utils::build_wsl_path_for_program(codex_program)
+        {
+            let mut wrapped: Vec<String> = Vec::with_capacity(args.len() + 2);
+            wrapped.push(format!("PATH={}", path_env));
+            wrapped.push(codex_program.to_string());
+            wrapped.extend(args.clone());
+            ("env", wrapped)
+        } else {
+            (codex_program, args)
+        }
+    } else {
+        (codex_program, args)
+    };
+
     let mut cmd = wsl_utils::build_wsl_command_async(
-        codex_program,
-        &args,
+        program_for_wsl,
+        &args_for_wsl,
         Some(&options.project_path),
         wsl_config.distro.as_deref(),
     );
@@ -791,8 +820,8 @@ fn build_wsl_codex_command(
             &options.project_path,
             wsl_config.distro.as_deref(),
         ),
-        codex_program,
-        args
+        program_for_wsl,
+        args_for_wsl
     );
 
     Ok((cmd, Some(options.prompt.clone())))
@@ -800,11 +829,22 @@ fn build_wsl_codex_command(
 
 /// Executes a Codex process and streams output to frontend
 async fn execute_codex_process(
+    session_id: String,
     mut cmd: Command,
     prompt: Option<String>,
     _project_path: String,
     app_handle: AppHandle,
 ) -> Result<(), String> {
+    // 启动流程一开始就发送 session_init，确保即使启动失败也能让前端拿到 session_id 做隔离与错误反馈
+    let init_payload = serde_json::json!({
+        "type": "session_init",
+        "session_id": session_id
+    });
+    if let Err(e) = app_handle.emit("codex-session-init", init_payload) {
+        log::error!("Failed to emit codex-session-init: {}", e);
+    }
+    log::info!("Codex session initialized with ID: {}", session_id);
+
     // Setup stdio
     cmd.stdin(Stdio::piped()); // Enable stdin to pass prompt
     cmd.stdout(Stdio::piped());
@@ -815,14 +855,29 @@ async fn execute_codex_process(
     apply_no_window_async(&mut cmd);
 
     // Spawn process
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn codex: {}", e))?;
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            emit_codex_error(&app_handle, &session_id, "启动 Codex 失败", Some(&e.to_string()));
+            // 这里不返回错误给前端（避免覆盖错误事件的可诊断信息），统一走事件通道
+            return Ok(());
+        }
+    };
 
     // Get process PID for proper cleanup (needed to kill child processes)
-    let pid = child
-        .id()
-        .ok_or("Failed to get process ID - process may have already exited")?;
+    let pid = match child.id() {
+        Some(pid) => pid,
+        None => {
+            emit_codex_error(
+                &app_handle,
+                &session_id,
+                "启动 Codex 失败：无法获取进程 PID",
+                None,
+            );
+            let _ = child.kill().await;
+            return Ok(());
+        }
+    };
     log::info!("[Codex] Spawned process with PID: {}", pid);
 
     // Windows robustness: assign the process to a Job Object so *all* descendants are cleaned up
@@ -859,7 +914,13 @@ async fn execute_codex_process(
             if let Err(e) = stdin.write_all(prompt_text.as_bytes()).await {
                 log::error!("Failed to write prompt to stdin: {}", e);
                 let _ = child.kill().await;
-                return Err(format!("Failed to write prompt to stdin: {}", e));
+                emit_codex_error(
+                    &app_handle,
+                    &session_id,
+                    "Codex 写入 stdin 失败",
+                    Some(&e.to_string()),
+                );
+                return Ok(());
             }
 
             // Close stdin to signal end of input
@@ -868,16 +929,33 @@ async fn execute_codex_process(
         } else {
             log::error!("Failed to get stdin handle");
             let _ = child.kill().await;
-            return Err("Failed to get stdin handle".to_string());
+            emit_codex_error(
+                &app_handle,
+                &session_id,
+                "Codex 启动失败：无法获取 stdin 句柄",
+                None,
+            );
+            return Ok(());
         }
     }
 
     // Extract stdout and stderr
-    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
-
-    // Generate session ID for tracking
-    let session_id = format!("codex-{}", uuid::Uuid::new_v4());
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            emit_codex_error(&app_handle, &session_id, "启动 Codex 失败：无法捕获 stdout", None);
+            let _ = child.kill().await;
+            return Ok(());
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(stderr) => stderr,
+        None => {
+            emit_codex_error(&app_handle, &session_id, "启动 Codex 失败：无法捕获 stderr", None);
+            let _ = child.kill().await;
+            return Ok(());
+        }
+    };
 
     // Store process in state with PID for proper cleanup
     let state: tauri::State<'_, CodexProcessState> = app_handle.state();
@@ -896,22 +974,17 @@ async fn execute_codex_process(
 
     // Clone handles for async tasks
     let app_handle_stdout = app_handle.clone();
-    let _app_handle_stderr = app_handle.clone(); // Reserved for future stderr event emission
     let app_handle_complete = app_handle.clone();
     let session_id_stdout = session_id.clone(); // Clone for stdout task
     let session_id_stderr = session_id.clone(); // Clone for stderr task
     let session_id_complete = session_id.clone();
 
-    // FIX: Emit session init event immediately so frontend can subscribe to the correct channel
-    // This event is sent on the global channel, frontend will use this to switch to session-specific listeners
-    let init_payload = serde_json::json!({
-        "type": "session_init",
-        "session_id": session_id
-    });
-    if let Err(e) = app_handle.emit("codex-session-init", init_payload) {
-        log::error!("Failed to emit codex-session-init: {}", e);
-    }
-    log::info!("Codex session initialized with ID: {}", session_id);
+    // 用于判断是否收到了任何 stdout 事件；仅当 stdout 完全无输出且存在 stderr 时，才触发 codex-error
+    let saw_stdout = Arc::new(AtomicBool::new(false));
+    let saw_stdout_for_complete = saw_stdout.clone();
+    let stderr_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let stderr_buffer_for_stderr = stderr_buffer.clone();
+    let stderr_buffer_for_complete = stderr_buffer.clone();
 
     // 🔧 FIX: Use channels to track stdout/stderr closure for timeout detection
     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
@@ -924,6 +997,7 @@ async fn execute_codex_process(
         let mut done_tx = Some(done_tx);
         while let Ok(Some(line)) = reader.next_line().await {
             if !line.trim().is_empty() {
+                saw_stdout.store(true, Ordering::Relaxed);
                 // Use trace level to avoid flooding logs in debug mode
                 log::trace!("Codex output: {}", line);
                 // Emit to session-specific channel first (for multi-tab isolation)
@@ -975,6 +1049,11 @@ async fn execute_codex_process(
             // Log error messages for debugging
             if !line.trim().is_empty() {
                 log::warn!("Codex stderr: {}", line);
+                // 仅缓存少量 stderr 以便在“无 stdout 输出”的启动失败场景下进行汇总反馈
+                let mut buf = stderr_buffer_for_stderr.lock().await;
+                if buf.len() < 20 {
+                    buf.push(line);
+                }
             }
         }
         log::info!("[Codex] Stderr closed for session: {}", session_id_stderr);
@@ -994,6 +1073,20 @@ async fn execute_codex_process(
         // Only wait for stdout to close (stderr can continue logging)
         let _ = done_rx.await;
         log::info!("[Codex] Completion signaled for session: {}", session_id_complete);
+
+        // 若 stdout 完全无输出但 stderr 有内容，补发一次可诊断错误事件，避免前端表现为“无反应”
+        if !saw_stdout_for_complete.load(Ordering::Relaxed) {
+            let buf = stderr_buffer_for_complete.lock().await;
+            if !buf.is_empty() {
+                let detail = buf.join("\n");
+                emit_codex_error(
+                    &app_handle_complete,
+                    &session_id_complete,
+                    "Codex 启动失败或未产生任何输出",
+                    Some(&detail),
+                );
+            }
+        }
 
         // 🔧 CRITICAL FIX: Emit completion event immediately after stdout closes
         // Don't wait for process exit or stderr - those can take a long time
@@ -1098,4 +1191,19 @@ async fn execute_codex_process(
     });
 
     Ok(())
+}
+
+fn emit_codex_error(app_handle: &AppHandle, session_id: &str, message: &str, detail: Option<&str>) {
+    let payload = serde_json::json!({
+        "session_id": session_id,
+        "error": {
+            "message": message,
+            "detail": detail,
+        }
+    });
+
+    let payload_str = serde_json::to_string(&payload).unwrap_or_else(|_| message.to_string());
+
+    let _ = app_handle.emit(&format!("codex-error:{}", session_id), &payload_str);
+    let _ = app_handle.emit("codex-error", &payload_str);
 }

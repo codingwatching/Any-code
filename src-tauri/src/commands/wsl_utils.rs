@@ -16,6 +16,9 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
 use log::{debug, info, warn};
 
+#[cfg(target_os = "windows")]
+use crate::claude_binary::detect_binary_for_tool;
+
 // Windows CREATE_NO_WINDOW 标志
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -378,107 +381,12 @@ pub fn reset_wsl_config() {
 /// 检测 Windows 原生 Codex 是否可用
 #[cfg(target_os = "windows")]
 pub fn is_native_codex_available() -> bool {
-    // 检查常见的 Codex 安装路径
-    let paths_to_try = get_native_codex_paths();
-
-    for path in &paths_to_try {
-        if std::path::Path::new(path).exists() {
-            debug!("[WSL] Found native Codex at: {}", path);
-            return true;
-        }
-    }
-
-    // 尝试运行 codex --version 看是否在 PATH 中
-    let mut cmd = Command::new("codex");
-    cmd.arg("--version");
-    cmd.creation_flags(CREATE_NO_WINDOW);
-
-    match cmd.output() {
-        Ok(output) if output.status.success() => {
-            debug!("[WSL] Native Codex found in PATH");
-            true
-        }
-        _ => {
-            debug!("[WSL] Native Codex not found");
-            false
-        }
-    }
-}
-
-/// 获取 Windows 原生 Codex 可能的安装路径
-#[cfg(target_os = "windows")]
-fn get_native_codex_paths() -> Vec<String> {
-    let mut paths = Vec::new();
-
-    // npm 全局安装路径 (APPDATA - 标准位置)
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        paths.push(format!(r"{}\npm\codex.cmd", appdata));
-        paths.push(format!(r"{}\npm\codex", appdata));
-        // nvm-windows 安装的 Node.js 版本
-        let nvm_dir = format!(r"{}\nvm", appdata);
-        if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
-            for entry in entries.flatten() {
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    let codex_path = entry.path().join("codex.cmd");
-                    if codex_path.exists() {
-                        paths.push(codex_path.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // npm 全局安装路径 (LOCALAPPDATA - 某些配置下的位置)
-    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-        paths.push(format!(r"{}\npm\codex.cmd", localappdata));
-        paths.push(format!(r"{}\npm\codex", localappdata));
-        // pnpm 全局安装路径
-        paths.push(format!(r"{}\pnpm\codex.cmd", localappdata));
-        paths.push(format!(r"{}\pnpm\codex", localappdata));
-        // Yarn 全局安装路径
-        paths.push(format!(r"{}\Yarn\bin\codex.cmd", localappdata));
-        paths.push(format!(r"{}\Yarn\bin\codex", localappdata));
-    }
-
-    // 用户目录下的安装路径
-    if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        // 自定义 npm 全局目录
-        paths.push(format!(r"{}\.npm-global\bin\codex.cmd", userprofile));
-        paths.push(format!(r"{}\.npm-global\bin\codex", userprofile));
-        paths.push(format!(r"{}\.npm-global\codex.cmd", userprofile));
-        // Volta 安装路径
-        paths.push(format!(r"{}\.volta\bin\codex.cmd", userprofile));
-        paths.push(format!(r"{}\.volta\bin\codex", userprofile));
-        // fnm (Fast Node Manager) 安装路径
-        paths.push(format!(r"{}\.fnm\aliases\default\codex.cmd", userprofile));
-        paths.push(format!(
-            r"{}\.fnm\node-versions\v*\installation\bin\codex.cmd",
-            userprofile
-        ));
-        // Scoop 安装路径
-        paths.push(format!(r"{}\scoop\shims\codex.cmd", userprofile));
-        paths.push(format!(
-            r"{}\scoop\apps\nodejs\current\codex.cmd",
-            userprofile
-        ));
-        // 本地 bin 目录
-        paths.push(format!(r"{}\.local\bin\codex.cmd", userprofile));
-        paths.push(format!(r"{}\.local\bin\codex", userprofile));
-    }
-
-    // Node.js 安装路径
-    if let Ok(programfiles) = std::env::var("ProgramFiles") {
-        paths.push(format!(r"{}\nodejs\codex.cmd", programfiles));
-        paths.push(format!(r"{}\nodejs\codex", programfiles));
-    }
-
-    // Chocolatey 安装路径
-    if let Ok(programdata) = std::env::var("ProgramData") {
-        paths.push(format!(r"{}\chocolatey\bin\codex.cmd", programdata));
-        paths.push(format!(r"{}\chocolatey\bin\codex", programdata));
-    }
-
-    paths
+    // 与其他模块保持一致：统一使用 detect_binary_for_tool 作为原生可用性判断依据
+    // 覆盖 env、PATH、注册表、常见目录以及用户配置（binaries.json）。
+    let (_env, detected) = detect_binary_for_tool("codex", "CODEX_PATH", "codex");
+    let available = detected.is_some();
+    debug!("[WSL] Native Codex available (unified detection): {}", available);
+    available
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -687,7 +595,8 @@ pub fn get_wsl_home_dir(distro: Option<&str>) -> Option<String> {
         cmd.arg("-d").arg(d);
     }
 
-    cmd.args(["--", "echo", "$HOME"]);
+    // 必须通过 shell 才能展开 $HOME；直接执行 `echo "$HOME"` 会输出字面量 "$HOME"
+    cmd.args(["--", "bash", "-lc", "echo $HOME"]);
     cmd.creation_flags(CREATE_NO_WINDOW);
 
     match cmd.output() {
@@ -712,6 +621,67 @@ pub fn get_wsl_home_dir(_distro: Option<&str>) -> Option<String> {
 /// 检测 WSL 内是否安装了 Codex，返回安装路径
 #[cfg(target_os = "windows")]
 pub fn check_wsl_codex(distro: Option<&str>) -> Option<String> {
+    fn build_default_wsl_path(extra_bin: Option<&str>) -> String {
+        // 保守的默认 PATH（适用于非交互 wsl -- 场景），避免依赖用户 shell 初始化（nvm/volta 等）。
+        // 若 codex/node 位于某个版本管理器 bin 目录，可通过 extra_bin 注入。
+        let base = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+        match extra_bin {
+            Some(bin) if !bin.trim().is_empty() => format!("{}:{}", bin.trim(), base),
+            _ => base.to_string(),
+        }
+    }
+
+    fn maybe_program_bin_dir(program: &str) -> Option<String> {
+        if !program.starts_with('/') {
+            return None;
+        }
+        let path = std::path::Path::new(program);
+        path.parent().map(|p| p.to_string_lossy().to_string())
+    }
+
+    fn verify_wsl_codex_executable(program: &str, distro: Option<&str>) -> bool {
+        let mut verify_cmd = Command::new("wsl");
+        if let Some(d) = distro {
+            verify_cmd.arg("-d").arg(d);
+        }
+        verify_cmd.arg("--");
+
+        // 若 program 是绝对路径（例如 /root/.nvm/.../bin/codex），则注入其 bin 目录到 PATH，
+        // 避免脚本内部 `exec node ...` 因非交互环境 PATH 不含 node 而失败。
+        if let Some(bin_dir) = maybe_program_bin_dir(program) {
+            verify_cmd.arg("env");
+            verify_cmd.arg(format!("PATH={}", build_default_wsl_path(Some(&bin_dir))));
+            verify_cmd.arg(program);
+        } else {
+            verify_cmd.arg(program);
+        }
+        verify_cmd.arg("--version");
+        verify_cmd.creation_flags(CREATE_NO_WINDOW);
+
+        match verify_cmd.output() {
+            Ok(output) if output.status.success() => true,
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                warn!(
+                    "[WSL] Codex candidate '{}' is not runnable (exit={:?}), stdout='{}', stderr='{}'",
+                    program,
+                    output.status.code(),
+                    stdout,
+                    stderr
+                );
+                false
+            }
+            Err(e) => {
+                warn!(
+                    "[WSL] Failed to verify Codex candidate '{}' execution: {}",
+                    program, e
+                );
+                false
+            }
+        }
+    }
+
     // 首先尝试使用 which 命令（依赖 PATH）
     let mut cmd = Command::new("wsl");
 
@@ -722,12 +692,24 @@ pub fn check_wsl_codex(distro: Option<&str>) -> Option<String> {
     cmd.args(["--", "which", "codex"]);
     cmd.creation_flags(CREATE_NO_WINDOW);
 
+    // 有些用户会启用 WSL 的 Windows PATH 追加（appendWindowsPath），导致 which 优先返回 /mnt/<drive>/...
+    // 这通常不是我们期望的 WSL 原生 Codex（更稳定的通常是 /usr/local/bin/codex 等）。
+    // 因此：若 which 返回的是 /mnt/ 路径，先作为备选，继续探测常见 Linux 路径。
+    let mut fallback_from_which: Option<String> = None;
+
     match cmd.output() {
         Ok(output) if output.status.success() => {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() && path.starts_with('/') {
                 info!("[WSL] Found codex via 'which' at: {}", path);
-                return Some(path);
+                // 仅以 "存在" 作为可用性会导致误判（例如脚本依赖 node，但 WSL 内无 node）
+                if path.starts_with("/mnt/") {
+                    if verify_wsl_codex_executable(&path, distro) {
+                        fallback_from_which = Some(path);
+                    }
+                } else if verify_wsl_codex_executable(&path, distro) {
+                    return Some(path);
+                }
             }
         }
         _ => {}
@@ -765,8 +747,10 @@ pub fn check_wsl_codex(distro: Option<&str>) -> Option<String> {
 
         if let Ok(output) = test_cmd.output() {
             if output.status.success() {
-                info!("[WSL] Found codex via direct path check at: {}", path);
-                return Some(path.clone());
+                if verify_wsl_codex_executable(path, distro) {
+                    info!("[WSL] Found codex via direct path check at: {}", path);
+                    return Some(path.clone());
+                }
             }
         }
     }
@@ -796,11 +780,13 @@ pub fn check_wsl_codex(distro: Option<&str>) -> Option<String> {
 
                     if let Ok(test_output) = test_cmd.output() {
                         if test_output.status.success() {
-                            info!(
-                                "[WSL] Found codex in nvm version {} at: {}",
-                                version, codex_path
-                            );
-                            return Some(codex_path);
+                            if verify_wsl_codex_executable(&codex_path, distro) {
+                                info!(
+                                    "[WSL] Found codex in nvm version {} at: {}",
+                                    version, codex_path
+                                );
+                                return Some(codex_path);
+                            }
                         }
                     }
                 }
@@ -809,7 +795,22 @@ pub fn check_wsl_codex(distro: Option<&str>) -> Option<String> {
     }
 
     debug!("[WSL] Codex not found in any common paths");
-    None
+    fallback_from_which
+}
+
+/// 为 WSL 非交互执行构建 PATH：默认系统路径 + （可选）program 所在 bin 目录。
+///
+/// 典型场景：Codex 安装在 nvm/fnm 的版本 bin 目录下，但非交互 wsl -- 不会加载 shell 初始化，导致 node 不在 PATH。
+#[cfg(target_os = "windows")]
+pub fn build_wsl_path_for_program(program: &str) -> Option<String> {
+    if !program.starts_with('/') {
+        return None;
+    }
+    let bin_dir = std::path::Path::new(program)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())?;
+    let base = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    Some(format!("{}:{}", bin_dir.trim(), base))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -841,7 +842,13 @@ fn fetch_wsl_codex_version(distro: Option<&str>) -> Option<String> {
     // 优先使用探测到的绝对路径，避免非交互环境 PATH 不包含 nvm/volta 等安装目录
     let program = check_wsl_codex(distro).unwrap_or_else(|| "codex".to_string());
     cmd.arg("--");
-    cmd.arg(&program);
+    if let Some(path_env) = build_wsl_path_for_program(&program) {
+        cmd.arg("env");
+        cmd.arg(format!("PATH={}", path_env));
+        cmd.arg(&program);
+    } else {
+        cmd.arg(&program);
+    }
     cmd.arg("--version");
     cmd.creation_flags(CREATE_NO_WINDOW);
 
