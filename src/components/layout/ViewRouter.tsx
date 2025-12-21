@@ -29,6 +29,13 @@ import { useProject } from '@/contexts/ProjectContext';
 import { useTabs } from '@/hooks/useTabs';
 import { useGlobalKeyboardShortcuts } from '@/hooks/useGlobalKeyboardShortcuts';
 
+type ClaudeCompletePayload = { tab_id?: string | null; payload: boolean } | boolean;
+
+const isClaudeCompleteSuccess = (payload: ClaudeCompletePayload) => {
+  if (typeof payload === 'boolean') return payload;
+  return payload?.payload === true;
+};
+
 // ✨ View transition variants
 const pageVariants = {
   initial: { opacity: 0, y: 10 },
@@ -113,8 +120,8 @@ export const ViewRouter: React.FC = () => {
   useEffect(() => {
     let unlistenComplete: UnlistenFn | null = null;
     const setupListener = async () => {
-      unlistenComplete = await listen<boolean>('claude-complete', async (event) => {
-        if (event.payload === true) {
+      unlistenComplete = await listen<ClaudeCompletePayload>('claude-complete', async (event) => {
+        if (isClaudeCompleteSuccess(event.payload)) {
           loadProjects(); // Refresh projects to update counts/timestamps
           if (selectedProject) {
             refreshSessions();

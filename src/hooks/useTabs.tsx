@@ -17,6 +17,7 @@ export interface Tab {
   // Session data
   projectPath?: string;
   session?: Session;
+  engine?: 'claude' | 'codex' | 'gemini';
   
   // State management (simplified)
   state: 'idle' | 'streaming' | 'error';
@@ -196,6 +197,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
       type: session ? 'session' : 'new',
       projectPath: projectPath || session?.project_path,
       session,
+      engine: session?.engine,
       state: 'idle',
       hasUnsavedChanges: false,
       createdAt: Date.now(),
@@ -312,11 +314,8 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     setTabs(prev =>
       prev.map(tab => {
         if (tab.id !== tabId) return tab;
-        // 创建或更新 session 对象的 engine 字段
-        const updatedSession = tab.session
-          ? { ...tab.session, engine }
-          : { id: '', project_path: tab.projectPath || '', project_id: '', created_at: Date.now(), engine } as Session;
-        return { ...tab, session: updatedSession };
+        const updatedSession = tab.session ? { ...tab.session, engine } : tab.session;
+        return { ...tab, engine, session: updatedSession };
       })
     );
   }, []);

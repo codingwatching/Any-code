@@ -102,6 +102,16 @@ interface UsePromptExecutionReturn {
   handleSendPrompt: (prompt: string, model: ModelType, maxThinkingTokens?: number) => Promise<void>;
 }
 
+type ClaudeGlobalEventPayload<T> = { tab_id?: string | null; payload: T } | T;
+
+const normalizeClaudeGlobalPayload = <T,>(payload: ClaudeGlobalEventPayload<T>) => {
+  if (payload && typeof payload === 'object' && 'payload' in payload) {
+    const typedPayload = payload as { tab_id?: string | null; payload: T };
+    return { tabId: typedPayload.tab_id ?? null, payload: typedPayload.payload };
+  }
+  return { tabId: null, payload: payload as T };
+};
+
 // ============================================================================
 // Hook Implementation
 // ============================================================================
@@ -1242,13 +1252,12 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
         // Generic Listeners (Catch-all) - FIXED to prevent cross-session data leakage
         // ====================================================================
         // 🔒 CRITICAL FIX: 全局事件现在格式为 { tab_id: string | null, payload: string }
-        const genericOutputUnlisten = await listen<{ tab_id: string | null; payload: string }>('claude-output', async (event) => {
+        const genericOutputUnlisten = await listen<ClaudeGlobalEventPayload<string>>('claude-output', async (event) => {
           // 🔧 CRITICAL FIX: 只在尚未收到会话ID时处理全局事件
           if (!hasActiveSessionRef.current) return;
 
           // 🔒 CRITICAL FIX: 使用 tab_id 过滤消息，这是最可靠的会话隔离方式
-          const eventTabId = event.payload.tab_id;
-          const messagePayload = event.payload.payload;
+          const { tabId: eventTabId, payload: messagePayload } = normalizeClaudeGlobalPayload(event.payload);
 
           // 如果事件包含 tab_id，则只处理匹配当前标签页的消息
           if (eventTabId && eventTabId !== tabIdRef.current) {
@@ -1393,27 +1402,27 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
         });
 
         // 🔒 CRITICAL FIX: 全局事件现在格式为 { tab_id: string | null, payload: string }
-        const genericErrorUnlisten = await listen<{ tab_id: string | null; payload: string }>('claude-error', (evt) => {
+        const genericErrorUnlisten = await listen<ClaudeGlobalEventPayload<string>>('claude-error', (evt) => {
           // 🔧 FIX: Only process if this tab has an active session
           if (!hasActiveSessionRef.current) return;
 
           // 🔒 CRITICAL FIX: 使用 tab_id 过滤消息
-          const eventTabId = evt.payload.tab_id;
+          const { tabId: eventTabId, payload: errorPayload } = normalizeClaudeGlobalPayload(evt.payload);
           if (eventTabId && eventTabId !== tabIdRef.current) {
             return;
           }
 
-          console.error('Claude error:', evt.payload.payload);
-          setError(evt.payload.payload);
+          console.error('Claude error:', errorPayload);
+          setError(errorPayload);
         });
 
         // 🔒 CRITICAL FIX: 全局事件现在格式为 { tab_id: string | null, payload: boolean }
-        const genericCompleteUnlisten = await listen<{ tab_id: string | null; payload: boolean }>('claude-complete', (evt) => {
+        const genericCompleteUnlisten = await listen<ClaudeGlobalEventPayload<boolean>>('claude-complete', (evt) => {
           // 🔧 FIX: Only process if this tab has an active session
           if (!hasActiveSessionRef.current) return;
 
           // 🔒 CRITICAL FIX: 使用 tab_id 过滤消息
-          const eventTabId = evt.payload.tab_id;
+          const { tabId: eventTabId } = normalizeClaudeGlobalPayload(evt.payload);
           if (eventTabId && eventTabId !== tabIdRef.current) {
             return;
           }

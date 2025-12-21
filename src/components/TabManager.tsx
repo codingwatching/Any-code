@@ -211,7 +211,9 @@ export const TabManager: React.FC<TabManagerProps> = ({
               className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-thin"
             >
               <AnimatePresence mode="popLayout">
-                {tabs.map((tab, index) => (
+                {tabs.map((tab, index) => {
+                  const tabEngine = tab.session?.engine ?? tab.engine ?? 'claude';
+                  return (
                   <Tooltip key={tab.id}>
                     <TooltipTrigger asChild>
                       <motion.div
@@ -239,12 +241,12 @@ export const TabManager: React.FC<TabManagerProps> = ({
                         {/* 引擎图标 + 状态指示 */}
                         <div className="flex-shrink-0 flex items-center gap-1">
                           {/* 引擎图标 */}
-                          {tab.session?.engine === 'codex' ? (
+                          {tabEngine === 'codex' ? (
                             <Bot className={cn(
                               "h-3.5 w-3.5",
                               tab.isActive ? "text-green-500" : "text-muted-foreground"
                             )} />
-                          ) : tab.session?.engine === 'gemini' ? (
+                          ) : tabEngine === 'gemini' ? (
                             <Sparkles className={cn(
                               "h-3.5 w-3.5",
                               tab.isActive ? "text-blue-500" : "text-muted-foreground"
@@ -321,12 +323,12 @@ export const TabManager: React.FC<TabManagerProps> = ({
                         </div>
                         {/* 引擎类型 */}
                         <div className="flex items-center gap-1.5 text-muted-foreground">
-                          {tab.session?.engine === 'codex' ? (
+                          {tabEngine === 'codex' ? (
                             <>
                               <Bot className="h-3 w-3 text-green-500" />
                               <span>Codex</span>
                             </>
-                          ) : tab.session?.engine === 'gemini' ? (
+                          ) : tabEngine === 'gemini' ? (
                             <>
                               <Sparkles className="h-3 w-3 text-blue-500" />
                               <span>Gemini</span>
@@ -359,7 +361,8 @@ export const TabManager: React.FC<TabManagerProps> = ({
                       </div>
                     </TooltipContent>
                   </Tooltip>
-                ))}
+                  );
+                })}
               </AnimatePresence>
 
               {/* 新建标签页按钮 */}

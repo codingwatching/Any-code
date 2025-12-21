@@ -4,6 +4,13 @@ import { useProject } from '@/contexts/ProjectContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useTabs } from '@/hooks/useTabs';
 
+type ClaudeCompletePayload = { tab_id?: string | null; payload: boolean } | boolean;
+
+const isClaudeCompleteSuccess = (payload: ClaudeCompletePayload) => {
+  if (typeof payload === 'boolean') return payload;
+  return payload?.payload === true;
+};
+
 export const useGlobalEvents = () => {
   const { loadProjects, refreshSessions, selectedProject } = useProject();
   const { navigateTo, currentView } = useNavigation();
@@ -47,8 +54,8 @@ export const useGlobalEvents = () => {
 
     const setupListener = async () => {
       try {
-        unlisten = await listen<boolean>('claude-complete', async (event) => {
-          if (event.payload === true) {
+        unlisten = await listen<ClaudeCompletePayload>('claude-complete', async (event) => {
+          if (isClaudeCompleteSuccess(event.payload)) {
             await loadProjects();
             if (selectedProject) {
               await refreshSessions();

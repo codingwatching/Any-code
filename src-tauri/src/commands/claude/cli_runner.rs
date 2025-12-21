@@ -17,12 +17,14 @@ use super::platform;
 /// Global state to track current Claude process
 pub struct ClaudeProcessState {
     pub current_process: Arc<Mutex<Option<Child>>>,
+    pub last_spawned_pid: Arc<Mutex<Option<u32>>>,
 }
 
 impl Default for ClaudeProcessState {
     fn default() -> Self {
         Self {
             current_process: Arc::new(Mutex::new(None)),
+            last_spawned_pid: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -584,7 +586,7 @@ pub async fn cancel_claude_execution(
                         e
                     );
 
-                    // Method 3: If we have a PID, try system kill as last resort
+                    // Fallback: If we have a PID, try system kill as last resort
                     if let Some(pid) = pid {
                         log::info!("Attempting system kill as last resort for PID: {}", pid);
                         match platform::kill_process_tree(pid) {
@@ -602,6 +604,29 @@ pub async fn cancel_claude_execution(
             attempted_methods.push("claude_state");
         } else {
             log::warn!("No active Claude process in ClaudeProcessState");
+        }
+    }
+
+    // Method 3: Try killing the last spawned PID when session_id is not available
+    if !killed {
+        let claude_state = app.state::<ClaudeProcessState>();
+        let last_pid = { *claude_state.last_spawned_pid.lock().await };
+        if let Some(pid) = last_pid {
+            log::info!("Attempting to kill Claude process via last spawned PID: {}", pid);
+            match platform::kill_process_tree(pid) {
+                Ok(_) => {
+                    log::info!("Successfully killed process tree via last spawned PID");
+                    let mut last_pid_guard = claude_state.last_spawned_pid.lock().await;
+                    if last_pid_guard.as_ref() == Some(&pid) {
+                        *last_pid_guard = None;
+                    }
+                    killed = true;
+                }
+                Err(e) => {
+                    log::error!("Failed to kill process tree via last spawned PID: {}", e);
+                }
+            }
+            attempted_methods.push("last_spawned_pid");
         }
     }
 
@@ -753,6 +778,10 @@ async fn spawn_claude_process(
         }
         // 不再存储 child，改为独立管理
         *current_process = None;
+    }
+    if pid != 0 {
+        let mut last_pid = claude_state.last_spawned_pid.lock().await;
+        *last_pid = Some(pid);
     }
 
     // Check if auto-compact state is available
@@ -944,6 +973,7 @@ async fn spawn_claude_process(
     let session_id_holder_clone3 = session_id_holder.clone();
     let run_id_holder_clone2 = run_id_holder.clone();
     let registry_clone2 = registry.0.clone();
+    let last_spawned_pid = claude_state.last_spawned_pid.clone();
     // 🔒 CRITICAL FIX: 克隆 tab_id 用于 complete 事件
     let tab_id_for_complete = tab_id;
     tokio::spawn(async move {
@@ -1005,6 +1035,13 @@ async fn spawn_claude_process(
         // Unregister from ProcessRegistry if we have a run_id
         if let Some(run_id) = *run_id_holder_clone2.lock().unwrap() {
             let _ = registry_clone2.unregister_process(run_id);
+        }
+
+        if pid != 0 {
+            let mut last_pid = last_spawned_pid.lock().await;
+            if last_pid.as_ref() == Some(&pid) {
+                *last_pid = None;
+            }
         }
     });
 
