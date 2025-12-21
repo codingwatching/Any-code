@@ -86,6 +86,8 @@ impl ProcessRegistry {
     }
 
     /// Register a new Claude session (without child process - handled separately)
+    /// DEPRECATED: Use register_claude_session_with_job instead for proper child process cleanup
+    #[allow(dead_code)]
     pub fn register_claude_session(
         &self,
         session_id: String,
@@ -93,6 +95,35 @@ impl ProcessRegistry {
         project_path: String,
         task: String,
         model: String,
+    ) -> Result<i64, String> {
+        // Call the new function with no pre-created job object (will create one here)
+        #[cfg(windows)]
+        {
+            self.register_claude_session_with_job(session_id, pid, project_path, task, model, None)
+        }
+        #[cfg(not(windows))]
+        {
+            self.register_claude_session_with_job(session_id, pid, project_path, task, model, None)
+        }
+    }
+
+    /// Register a new Claude session with an optional pre-created Job Object
+    ///
+    /// 🔧 FIX: This function accepts a pre-created Job Object that was created immediately
+    /// after spawning the Claude process. This ensures all child processes (including MCP
+    /// node processes) are added to the Job Object and will be terminated when the session ends.
+    ///
+    /// If no Job Object is provided, one will be created here (legacy behavior, but may miss
+    /// child processes that were already started).
+    #[cfg(windows)]
+    pub fn register_claude_session_with_job(
+        &self,
+        session_id: String,
+        pid: u32,
+        project_path: String,
+        task: String,
+        model: String,
+        pre_created_job: Option<Arc<JobObject>>,
     ) -> Result<i64, String> {
         let run_id = self.generate_id()?;
 
@@ -106,15 +137,23 @@ impl ProcessRegistry {
             model,
         };
 
-        // Register without child - Claude sessions use ClaudeProcessState for process management
         let mut processes = self.processes.lock().map_err(|e| e.to_string())?;
 
-        // Create Job Object on Windows for automatic process cleanup
-        #[cfg(windows)]
-        let job_object = {
+        // Use pre-created Job Object if provided, otherwise create one here (legacy fallback)
+        let job_object = if let Some(job) = pre_created_job {
+            log::info!(
+                "🔧 FIX: Using pre-created Job Object for process {} (child processes included)",
+                pid
+            );
+            Some(job)
+        } else {
+            // Legacy fallback: create Job Object here (may miss already-started child processes)
+            log::warn!(
+                "Creating Job Object late for process {} - child processes may not be included",
+                pid
+            );
             match JobObject::create() {
                 Ok(job) => {
-                    // Assign the process to the job
                     match job.assign_process_by_pid(pid) {
                         Ok(_) => {
                             log::info!(
@@ -138,10 +177,44 @@ impl ProcessRegistry {
 
         let process_handle = ProcessHandle {
             info: process_info,
-            child: Arc::new(Mutex::new(None)), // No child handle for Claude sessions
+            child: Arc::new(Mutex::new(None)),
             live_output: Arc::new(Mutex::new(String::new())),
-            #[cfg(windows)]
             job_object,
+        };
+
+        processes.insert(run_id, process_handle);
+        Ok(run_id)
+    }
+
+    /// Register a new Claude session with an optional pre-created Job Object (non-Windows version)
+    #[cfg(not(windows))]
+    pub fn register_claude_session_with_job(
+        &self,
+        session_id: String,
+        pid: u32,
+        project_path: String,
+        task: String,
+        model: String,
+        _pre_created_job: Option<()>,
+    ) -> Result<i64, String> {
+        let run_id = self.generate_id()?;
+
+        let process_info = ProcessInfo {
+            run_id,
+            process_type: ProcessType::ClaudeSession { session_id },
+            pid,
+            started_at: Utc::now(),
+            project_path,
+            task,
+            model,
+        };
+
+        let mut processes = self.processes.lock().map_err(|e| e.to_string())?;
+
+        let process_handle = ProcessHandle {
+            info: process_info,
+            child: Arc::new(Mutex::new(None)),
+            live_output: Arc::new(Mutex::new(String::new())),
         };
 
         processes.insert(run_id, process_handle);

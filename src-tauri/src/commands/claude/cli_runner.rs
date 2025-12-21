@@ -9,6 +9,8 @@ use tokio::sync::Mutex;
 use crate::commands::permission_config::{
     build_execution_args, ClaudeExecutionConfig, ClaudePermissionConfig,
 };
+#[cfg(windows)]
+use crate::process::JobObject;
 
 use super::config::get_claude_execution_config;
 use super::paths::{encode_project_path, get_claude_dir};
@@ -756,6 +758,37 @@ async fn spawn_claude_process(
     let pid = child.id().unwrap_or(0);
     log::info!("Spawned Claude process with PID: {:?}", pid);
 
+    // 🔧 FIX: Create Job Object IMMEDIATELY after spawn, before Claude starts MCP servers
+    // This ensures all child processes (including MCP node processes) are automatically
+    // added to the Job Object and will be terminated when the job is closed.
+    // Previously, Job Object was created when receiving init message, which was too late.
+    #[cfg(windows)]
+    let job_object: Option<Arc<JobObject>> = if pid != 0 {
+        match JobObject::create() {
+            Ok(job) => {
+                match job.assign_process_by_pid(pid) {
+                    Ok(_) => {
+                        log::info!(
+                            "🔧 FIX: Assigned process {} to Job Object immediately after spawn",
+                            pid
+                        );
+                        Some(Arc::new(job))
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to assign process {} to Job Object: {}", pid, e);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to create Job Object: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Create readers first (before moving child)
     let stdout_reader = BufReader::new(stdout);
     let stderr_reader = BufReader::new(stderr);
@@ -763,6 +796,9 @@ async fn spawn_claude_process(
     // We'll extract the session ID from Claude's init message
     let session_id_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let run_id_holder: Arc<Mutex<Option<i64>>> = Arc::new(Mutex::new(None));
+    #[cfg(windows)]
+    let job_object_holder: Arc<std::sync::Mutex<Option<Arc<JobObject>>>> =
+        Arc::new(std::sync::Mutex::new(job_object));
 
     // 🔒 CRITICAL FIX: 不再使用全局 ClaudeProcessState 管理进程生命周期
     // 原因：全局单例只能存储一个 child，多会话并发时会互相覆盖
@@ -800,6 +836,9 @@ async fn spawn_claude_process(
     let model_clone = model.clone();
     // 🔒 CRITICAL FIX: 克隆 tab_id 用于事件发送
     let tab_id_for_stdout = tab_id.clone();
+    // 🔧 FIX: Clone job_object_holder for passing to register_claude_session
+    #[cfg(windows)]
+    let job_object_holder_clone = job_object_holder.clone();
     let stdout_task = tokio::spawn(async move {
         let mut lines = stdout_reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
@@ -829,12 +868,22 @@ async fn spawn_claude_process(
                             }
 
                             // Now register with ProcessRegistry using Claude's session ID
-                            match registry_clone.register_claude_session(
+                            // 🔧 FIX: Pass the pre-created Job Object to avoid orphan processes
+                            #[cfg(windows)]
+                            let job_object_for_register = job_object_holder_clone
+                                .lock()
+                                .unwrap()
+                                .take();
+                            #[cfg(not(windows))]
+                            let job_object_for_register: Option<()> = None;
+
+                            match registry_clone.register_claude_session_with_job(
                                 claude_session_id.to_string(),
                                 pid,
                                 project_path_clone.clone(),
                                 prompt_clone.clone(),
                                 model_clone.clone(),
+                                job_object_for_register,
                             ) {
                                 Ok(run_id) => {
                                     log::info!("Registered Claude session with run_id: {}", run_id);
