@@ -244,7 +244,7 @@ export const Settings: React.FC<SettingsProps> = ({
         setUserHooksChanged(false);
       }
 
-      setToast({ message: "Settings saved successfully!", type: "success" });
+      setToast({ message: t('messages.saved'), type: "success" });
     } catch (err) {
       console.error("Failed to save settings:", err);
       setError(t('errors.saveFailed'));
