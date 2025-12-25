@@ -39,6 +39,28 @@ impl ProjectStore {
             let entries = fs::read_dir(&projects_dir)
                 .map_err(|e| format!("Failed to read projects directory: {}", e))?;
 
+            // Count total valid project directories first
+            let total_project_count = fs::read_dir(&projects_dir)
+                .map(|entries| entries.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).count())
+                .unwrap_or(0);
+
+            // Safety check: if hidden_projects would hide ALL projects, clear the hidden list
+            // This prevents the "no projects found" issue caused by corrupted hidden_projects.json
+            let hidden_projects = if total_project_count > 0 && hidden_projects.len() >= total_project_count {
+                log::warn!(
+                    "Safety check triggered: hidden_projects ({}) >= total projects ({}). Clearing hidden list to prevent all projects from being hidden.",
+                    hidden_projects.len(),
+                    total_project_count
+                );
+                // Clear the hidden projects file
+                if let Err(e) = self.save_hidden_projects(&[]) {
+                    log::error!("Failed to clear hidden projects file: {}", e);
+                }
+                Vec::new()
+            } else {
+                hidden_projects
+            };
+
             for entry in entries {
                 let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
                 let path = entry.path();
