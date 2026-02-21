@@ -2,13 +2,17 @@
  * Task Management Widgets - Claude Code 任务管理工具
  *
  * 支持 TaskCreate, TaskUpdate, TaskList, TaskGet 工具的渲染
- * 与 TodoWidget 风格保持一致
+ * 使用模块级 Map 关联 taskId → subject，使 TaskUpdate 能显示任务标题
  */
 
 import React from "react";
 import { CheckCircle2, Clock, Circle, Plus, List, Eye, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+// 模块级 taskId → subject 映射表
+// TaskCreate 渲染时写入，TaskUpdate 渲染时读取
+const taskSubjectMap = new Map<string, string>();
 
 const statusIcons: Record<string, React.ReactNode> = {
   completed: <CheckCircle2 className="h-4 w-4 text-success" />,
@@ -45,20 +49,39 @@ export interface TaskCreateWidgetProps {
 export const TaskCreateWidget: React.FC<TaskCreateWidgetProps> = ({
   subject,
   description,
+  result,
 }) => {
+  // 从 result 中提取 taskId 并注册到映射表
+  const taskId = result?.sourceMessage?.toolUseResult?.task?.id;
+  const resultSubject = result?.sourceMessage?.toolUseResult?.task?.subject;
+  const displaySubject = subject || resultSubject || description;
+
+  if (taskId && displaySubject) {
+    taskSubjectMap.set(taskId, displaySubject);
+  }
+
+  // 也尝试从 result.content 字符串中提取 taskId
+  // 格式: "Task #1 created successfully: 更新 Claude 4.6 系列模型..."
+  if (!taskId && result?.content && displaySubject) {
+    const match = typeof result.content === 'string'
+      ? result.content.match(/Task #(\d+)/)
+      : null;
+    if (match) {
+      taskSubjectMap.set(match[1], displaySubject);
+    }
+  }
+
   return (
     <div className="flex items-center gap-2 py-0.5">
       <Plus className="h-4 w-4 text-primary" />
-      {subject ? (
-        <span className="text-sm truncate max-w-[400px]">{subject}</span>
-      ) : description ? (
-        <span className="text-xs text-muted-foreground truncate max-w-[400px]">{description}</span>
+      {taskId && (
+        <span className="text-xs font-mono text-muted-foreground">#{taskId}</span>
+      )}
+      {displaySubject ? (
+        <span className="text-sm truncate max-w-[400px]">{displaySubject}</span>
       ) : (
         <span className="text-xs text-muted-foreground">新任务</span>
       )}
-      <Badge variant="outline" className={cn("text-xs shrink-0", statusColors.pending)}>
-        {statusLabels.pending}
-      </Badge>
     </div>
   );
 };
@@ -85,13 +108,15 @@ export const TaskUpdateWidget: React.FC<TaskUpdateWidgetProps> = ({
 }) => {
   const displayStatus = status || "pending";
 
-  // Extract statusChange from toolUseResult if available
+  // 从多个来源尝试获取任务标题
+  // 1. input 中的 subject/activeForm
+  // 2. toolUseResult 中的信息
+  // 3. 从 taskSubjectMap 中查找（由 TaskCreate 注册）
   const toolUseResult = result?.sourceMessage?.toolUseResult;
-  const statusChange = toolUseResult?.statusChange;
-  const fromStatus = statusChange?.from;
-
-  // Try to get subject from various sources
-  const displaySubject = subject || activeForm || toolUseResult?.subject;
+  const displaySubject = subject
+    || activeForm
+    || toolUseResult?.subject
+    || (taskId ? taskSubjectMap.get(taskId) : undefined);
 
   return (
     <div className="flex items-center gap-2 py-0.5">
@@ -99,20 +124,15 @@ export const TaskUpdateWidget: React.FC<TaskUpdateWidgetProps> = ({
       {taskId && (
         <span className="text-xs font-mono text-muted-foreground">#{taskId}</span>
       )}
-      {displaySubject ? (
+      {displaySubject && (
         <span className="text-sm truncate max-w-[400px]">{displaySubject}</span>
-      ) : fromStatus ? (
-        <span className="text-xs text-muted-foreground">
-          {statusLabels[fromStatus] || fromStatus} → {statusLabels[displayStatus] || displayStatus}
-        </span>
-      ) : (
-        <Badge
-          variant="outline"
-          className={cn("text-xs", statusColors[displayStatus])}
-        >
-          {statusLabels[displayStatus] || displayStatus}
-        </Badge>
       )}
+      <Badge
+        variant="outline"
+        className={cn("text-xs shrink-0", statusColors[displayStatus])}
+      >
+        {statusLabels[displayStatus] || displayStatus}
+      </Badge>
     </div>
   );
 };
