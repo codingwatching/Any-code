@@ -2,8 +2,8 @@ import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect, us
 import { AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { FloatingPromptInputProps, FloatingPromptInputRef, ThinkingMode, ModelType, ModelConfig } from "./types";
-import { THINKING_MODES, MODELS } from "./constants";
+import { FloatingPromptInputProps, FloatingPromptInputRef, ThinkingMode, ThinkingEffort, ModelType, ModelConfig } from "./types";
+import { MODELS } from "./constants";
 import { useImageHandling } from "./hooks/useImageHandling";
 import { useFileSelection } from "./hooks/useFileSelection";
 import { usePromptEnhancement } from "./hooks/usePromptEnhancement";
@@ -114,26 +114,37 @@ const FloatingPromptInputInner = (
   }, []);
 
   // Initialize thinking mode from settings.json (source of truth)
-  // 🔥 修复：从 settings.json 读取 MAX_THINKING_TOKENS 的真实状态，而不是仅依赖 localStorage
+  // Claude 4.6: Read CLAUDE_CODE_THINKING_EFFORT from settings.json env
   useEffect(() => {
     const initThinkingMode = async () => {
       try {
-        // 从 settings.json 读取真实状态
         const settings = await api.getClaudeSettings();
-        const hasMaxThinkingTokens = settings?.env?.MAX_THINKING_TOKENS !== undefined;
-        const actualMode = hasMaxThinkingTokens ? 'on' : 'off';
-
-        dispatch({ type: "SET_THINKING_MODE", payload: actualMode });
-
-        // 同步更新 localStorage 以保持一致
-        localStorage.setItem('thinking_mode', actualMode);
+        const effort = settings?.env?.CLAUDE_CODE_THINKING_EFFORT;
+        if (effort && ['low', 'medium', 'high', 'max'].includes(effort)) {
+          dispatch({ type: "SET_THINKING_MODE", payload: { mode: 'adaptive', effort: effort as ThinkingEffort } });
+          localStorage.setItem('thinking_mode', 'adaptive');
+          localStorage.setItem('thinking_effort', effort);
+        } else {
+          // Check legacy MAX_THINKING_TOKENS for backward compatibility
+          const hasLegacy = settings?.env?.MAX_THINKING_TOKENS !== undefined;
+          if (hasLegacy) {
+            dispatch({ type: "SET_THINKING_MODE", payload: { mode: 'adaptive', effort: 'high' } });
+            localStorage.setItem('thinking_mode', 'adaptive');
+            localStorage.setItem('thinking_effort', 'high');
+          } else {
+            dispatch({ type: "SET_THINKING_MODE", payload: { mode: 'off' } });
+            localStorage.setItem('thinking_mode', 'off');
+          }
+        }
       } catch (error) {
         console.error('[ThinkingMode] Failed to read settings, falling back to localStorage:', error);
-        // 降级：从 localStorage 读取
         try {
           const stored = localStorage.getItem('thinking_mode');
-          if (stored === 'off' || stored === 'on') {
-            dispatch({ type: "SET_THINKING_MODE", payload: stored });
+          const storedEffort = localStorage.getItem('thinking_effort');
+          if (stored === 'adaptive' && storedEffort) {
+            dispatch({ type: "SET_THINKING_MODE", payload: { mode: 'adaptive', effort: storedEffort as ThinkingEffort } });
+          } else {
+            dispatch({ type: "SET_THINKING_MODE", payload: { mode: 'off' } });
           }
         } catch {
           // Ignore error
@@ -368,36 +379,47 @@ const FloatingPromptInputInner = (
     setPrompt: (text: string) => dispatch({ type: "SET_PROMPT", payload: text }),
   }));
 
-  // Toggle thinking mode
+  // Toggle thinking mode - cycle through: off → high → max → low → medium → off
+  const EFFORT_CYCLE: (ThinkingEffort | 'off')[] = ['off', 'high', 'max', 'low', 'medium'];
+
   const handleToggleThinkingMode = useCallback(async () => {
     const currentMode = state.selectedThinkingMode;
-    const newMode: ThinkingMode = currentMode === "off" ? "on" : "off";
-    dispatch({ type: "SET_THINKING_MODE", payload: newMode });
+    const currentEffort = state.selectedThinkingEffort;
+
+    // Find current position in cycle
+    const currentKey = currentMode === 'off' ? 'off' : (currentEffort || 'high');
+    const currentIndex = EFFORT_CYCLE.indexOf(currentKey);
+    const nextIndex = (currentIndex + 1) % EFFORT_CYCLE.length;
+    const nextKey = EFFORT_CYCLE[nextIndex];
+
+    const newMode: ThinkingMode = nextKey === 'off' ? 'off' : 'adaptive';
+    const newEffort: ThinkingEffort | undefined = nextKey === 'off' ? undefined : nextKey as ThinkingEffort;
+
+    dispatch({ type: "SET_THINKING_MODE", payload: { mode: newMode, effort: newEffort } });
 
     // Persist to localStorage
     try {
       localStorage.setItem('thinking_mode', newMode);
+      if (newEffort) localStorage.setItem('thinking_effort', newEffort);
+      else localStorage.removeItem('thinking_effort');
     } catch {
       // Ignore localStorage errors
     }
 
     try {
-      const thinkingMode = THINKING_MODES.find(m => m.id === newMode);
-      const enabled = newMode === "on";
-      const tokens = thinkingMode?.tokens;
-      await api.updateThinkingMode(enabled, tokens);
+      await api.updateThinkingMode(newMode === 'adaptive', newEffort);
     } catch (error) {
       console.error("Failed to update thinking mode:", error);
-      // Revert state and localStorage on API error
-      const revertedMode = currentMode;
-      dispatch({ type: "SET_THINKING_MODE", payload: revertedMode });
+      // Revert on error
+      dispatch({ type: "SET_THINKING_MODE", payload: { mode: currentMode, effort: currentEffort } });
       try {
-        localStorage.setItem('thinking_mode', revertedMode);
+        localStorage.setItem('thinking_mode', currentMode);
+        if (currentEffort) localStorage.setItem('thinking_effort', currentEffort);
       } catch {
         // Ignore localStorage errors
       }
     }
-  }, [state.selectedThinkingMode]);
+  }, [state.selectedThinkingMode, state.selectedThinkingEffort]);
 
   // Focus management
   useEffect(() => {
@@ -567,6 +589,7 @@ const FloatingPromptInputInner = (
             setSelectedModel={(model) => dispatch({ type: "SET_MODEL", payload: model })}
             availableModels={availableModels}
             selectedThinkingMode={state.selectedThinkingMode}
+            selectedThinkingEffort={state.selectedThinkingEffort}
             handleToggleThinkingMode={handleToggleThinkingMode}
             isPlanMode={isPlanMode}
             onTogglePlanMode={onTogglePlanMode}
@@ -656,6 +679,7 @@ const FloatingPromptInputInner = (
             setSelectedModel={(model) => dispatch({ type: "SET_MODEL", payload: model })}
             availableModels={availableModels}
             selectedThinkingMode={state.selectedThinkingMode}
+            selectedThinkingEffort={state.selectedThinkingEffort}
             handleToggleThinkingMode={handleToggleThinkingMode}
             isPlanMode={isPlanMode}
             onTogglePlanMode={onTogglePlanMode}

@@ -360,13 +360,14 @@ pub async fn save_claude_settings(settings: serde_json::Value) -> Result<String,
     Ok("Settings saved successfully".to_string())
 }
 
-/// Updates the thinking mode in settings.json by modifying the MAX_THINKING_TOKENS env variable
+/// Updates the thinking mode in settings.json using Claude 4.6 Adaptive Thinking
+/// Sets CLAUDE_CODE_THINKING_EFFORT env var and cleans up legacy MAX_THINKING_TOKENS
 #[tauri::command]
-pub async fn update_thinking_mode(enabled: bool, tokens: Option<u32>) -> Result<String, String> {
+pub async fn update_thinking_mode(enabled: bool, effort: Option<String>) -> Result<String, String> {
     log::info!(
-        "Updating thinking mode: enabled={}, tokens={:?}",
+        "Updating thinking mode: enabled={}, effort={:?}",
         enabled,
-        tokens
+        effort
     );
 
     let claude_dir = get_claude_dir().map_err(|e| e.to_string())?;
@@ -398,21 +399,21 @@ pub async fn update_thinking_mode(enabled: bool, tokens: Option<u32>) -> Result<
         .as_object_mut()
         .ok_or("env is not an object")?;
 
-    // Update MAX_THINKING_TOKENS
+    // Update CLAUDE_CODE_THINKING_EFFORT (Claude 4.6 Adaptive Thinking)
     if enabled {
-        let token_value = tokens.unwrap_or(31999);
+        let effort_value = effort.unwrap_or_else(|| "high".to_string());
         env_obj.insert(
-            "MAX_THINKING_TOKENS".to_string(),
-            serde_json::json!(token_value.to_string()),
+            "CLAUDE_CODE_THINKING_EFFORT".to_string(),
+            serde_json::json!(effort_value),
         );
-        log::info!("Set MAX_THINKING_TOKENS to {}", token_value);
+        log::info!("Set CLAUDE_CODE_THINKING_EFFORT to {}", effort_value);
     } else {
-        env_obj.remove("MAX_THINKING_TOKENS");
-        log::info!("Removed MAX_THINKING_TOKENS from env");
+        env_obj.remove("CLAUDE_CODE_THINKING_EFFORT");
+        log::info!("Removed CLAUDE_CODE_THINKING_EFFORT from env");
     }
 
-    // Also remove the old alwaysThinkingEnabled field if it exists
-    // This field conflicts with the standard MAX_THINKING_TOKENS approach
+    // Clean up legacy fields
+    env_obj.remove("MAX_THINKING_TOKENS");
     if settings_obj.contains_key("alwaysThinkingEnabled") {
         settings_obj.remove("alwaysThinkingEnabled");
         log::info!("Removed deprecated alwaysThinkingEnabled field");

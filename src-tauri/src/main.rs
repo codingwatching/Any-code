@@ -115,6 +115,8 @@ use commands::codex::{
     test_codex_provider_connection,
     update_codex_provider_config,
     update_codex_reasoning_level,
+    get_codex_multi_agent_config,
+    set_codex_multi_agent_config,
     validate_codex_path_cmd,
     CodexProcessState,
 };
@@ -491,6 +493,8 @@ fn main() {
             clear_codex_provider_config,
             test_codex_provider_connection,
             update_codex_reasoning_level,
+            get_codex_multi_agent_config,
+            set_codex_multi_agent_config,
             reorder_codex_provider_configs,
             // Codex Usage Statistics
             get_codex_usage_stats,

@@ -33,9 +33,9 @@ export const MODELS: ModelConfig[] = [
 
 /**
  * Thinking modes configuration
- * Simplified to on/off toggle (conforming to official Claude Code standard)
- * Default tokens when enabled: 31999 (balanced for most use cases)
- * 
+ * Claude 4.6 Adaptive Thinking with effort levels
+ * Controls thinking depth via CLAUDE_CODE_THINKING_EFFORT env var
+ *
  * Note: Names and descriptions are translation keys that will be resolved at runtime
  */
 export const THINKING_MODES: ThinkingModeConfig[] = [
@@ -44,19 +44,33 @@ export const THINKING_MODES: ThinkingModeConfig[] = [
     name: "promptInput.thinkingModeOff",
     description: "promptInput.normalSpeed",
     level: 0,
-    tokens: undefined // No extended thinking
   },
   {
-    id: "on",
-    name: "promptInput.thinkingModeOn",
-    description: "promptInput.deepThinking",
+    id: "adaptive",
+    effort: "low",
+    name: "promptInput.thinkingEffortLow",
+    description: "promptInput.thinkingEffortLowDesc",
     level: 1,
-    tokens: 31999 // Default thinking tokens
+  },
+  {
+    id: "adaptive",
+    effort: "medium",
+    name: "promptInput.thinkingEffortMedium",
+    description: "promptInput.thinkingEffortMediumDesc",
+    level: 2,
+  },
+  {
+    id: "adaptive",
+    effort: "high",
+    name: "promptInput.thinkingEffortHigh",
+    description: "promptInput.thinkingEffortHighDesc",
+    level: 3,
+  },
+  {
+    id: "adaptive",
+    effort: "max",
+    name: "promptInput.thinkingEffortMax",
+    description: "promptInput.thinkingEffortMaxDesc",
+    level: 4,
   }
 ];
-
-/**
- * Default thinking tokens when enabled
- * Can be adjusted via environment variable MAX_THINKING_TOKENS
- */
-export const DEFAULT_THINKING_TOKENS = 31999;

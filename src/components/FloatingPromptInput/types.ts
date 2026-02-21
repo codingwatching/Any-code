@@ -7,9 +7,14 @@ export type ModelType = "sonnet" | "opus" | "sonnet1m" | "opus1m" | "custom";
 
 /**
  * Thinking mode type definition
- * Simplified to on/off (conforming to official Claude Code standard)
+ * Claude 4.6 Adaptive Thinking with effort levels
  */
-export type ThinkingMode = "off" | "on";
+export type ThinkingMode = "off" | "adaptive";
+
+/**
+ * Thinking effort level (Claude 4.6 Adaptive Thinking)
+ */
+export type ThinkingEffort = "low" | "medium" | "high" | "max";
 
 /**
  * Model configuration
@@ -26,10 +31,10 @@ export interface ModelConfig {
  */
 export interface ThinkingModeConfig {
   id: ThinkingMode;
+  effort?: ThinkingEffort; // Effort level for adaptive thinking
   name: string;
   description: string;
-  level: number; // 0-5 for visual indicator
-  tokens?: number; // Maximum thinking tokens (undefined = no extended thinking)
+  level: number; // 0-4 for visual indicator
 }
 
 /**

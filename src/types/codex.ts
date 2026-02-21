@@ -224,6 +224,19 @@ export interface CodexRateLimit {
 }
 
 /**
+ * Codex Multi-Agent configuration (Experimental)
+ * Controls the multi-agent/subagent feature in config.toml [features] section
+ */
+export interface CodexMultiAgentConfig {
+  /** Whether multi-agent is enabled */
+  enabled: boolean;
+  /** Model for subagents (optional, defaults to main model) */
+  subagentModel?: string;
+  /** Reasoning effort for subagents (optional) */
+  subagentReasoningEffort?: string;
+}
+
+/**
  * Codex rate limits structure
  */
 export interface CodexRateLimits {

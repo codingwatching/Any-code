@@ -1543,3 +1543,130 @@ pub async fn update_codex_reasoning_level(level: String) -> Result<String, Strin
         mode_info
     ))
 }
+
+// ============================================================================
+// Multi-Agent Configuration (Experimental)
+// ============================================================================
+
+/// Multi-agent feature configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexMultiAgentConfig {
+    pub enabled: bool,
+    pub subagent_model: Option<String>,
+    pub subagent_reasoning_effort: Option<String>,
+}
+
+/// Get Codex multi-agent configuration from config.toml [features] section
+#[tauri::command]
+pub async fn get_codex_multi_agent_config() -> Result<CodexMultiAgentConfig, String> {
+    log::info!("[Codex] Getting multi-agent configuration");
+
+    let config_path = get_codex_config_path()?;
+
+    if !config_path.exists() {
+        return Ok(CodexMultiAgentConfig {
+            enabled: false,
+            subagent_model: None,
+            subagent_reasoning_effort: None,
+        });
+    }
+
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config.toml: {}", e))?;
+    let config_table: toml::Table = toml::from_str(&content)
+        .unwrap_or_else(|_| toml::Table::new());
+
+    let enabled = config_table
+        .get("features")
+        .and_then(|f| f.as_table())
+        .and_then(|t| t.get("multi_agent"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let subagent_model = config_table
+        .get("features")
+        .and_then(|f| f.as_table())
+        .and_then(|t| t.get("subagent_model"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let subagent_reasoning_effort = config_table
+        .get("features")
+        .and_then(|f| f.as_table())
+        .and_then(|t| t.get("subagent_reasoning_effort"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    Ok(CodexMultiAgentConfig {
+        enabled,
+        subagent_model,
+        subagent_reasoning_effort,
+    })
+}
+
+/// Set Codex multi-agent configuration in config.toml [features] section
+#[tauri::command]
+pub async fn set_codex_multi_agent_config(config: CodexMultiAgentConfig) -> Result<String, String> {
+    log::info!("[Codex] Setting multi-agent config: enabled={}", config.enabled);
+
+    let config_dir = get_codex_config_dir()?;
+    let config_path = get_codex_config_path()?;
+
+    // Ensure config directory exists
+    if !config_dir.exists() {
+        fs::create_dir_all(&config_dir)
+            .map_err(|e| format!("Failed to create .codex directory: {}", e))?;
+    }
+
+    // Read existing config
+    let mut config_table: toml::Table = if config_path.exists() {
+        let content = fs::read_to_string(&config_path)
+            .map_err(|e| format!("Failed to read config.toml: {}", e))?;
+        toml::from_str(&content).unwrap_or_else(|_| toml::Table::new())
+    } else {
+        toml::Table::new()
+    };
+
+    // Update [features] section
+    let features = config_table
+        .entry("features".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+
+    if let Some(features_table) = features.as_table_mut() {
+        features_table.insert(
+            "multi_agent".to_string(),
+            toml::Value::Boolean(config.enabled),
+        );
+
+        if let Some(model) = &config.subagent_model {
+            features_table.insert(
+                "subagent_model".to_string(),
+                toml::Value::String(model.clone()),
+            );
+        } else {
+            features_table.remove("subagent_model");
+        }
+
+        if let Some(effort) = &config.subagent_reasoning_effort {
+            features_table.insert(
+                "subagent_reasoning_effort".to_string(),
+                toml::Value::String(effort.clone()),
+            );
+        } else {
+            features_table.remove("subagent_reasoning_effort");
+        }
+    }
+
+    // Write back
+    let final_config = toml::to_string_pretty(&config_table)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    fs::write(&config_path, &final_config)
+        .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+
+    log::info!("[Codex] Multi-agent config updated successfully");
+    Ok(format!(
+        "Multi-agent {} successfully",
+        if config.enabled { "enabled" } else { "disabled" }
+    ))
+}

@@ -14,7 +14,7 @@ import { CodexReasoningLevelSelector, type CodexReasoningLevel } from "./CodexRe
 import { GeminiModelSelector } from "./GeminiModelSelector";
 import { ThinkingModeToggle } from "./ThinkingModeToggle";
 import { PlanModeToggle } from "./PlanModeToggle";
-import { ModelType, ModelConfig } from "./types";
+import { ModelType, ModelConfig, ThinkingEffort } from "./types";
 
 interface ExpandedModalProps {
   prompt: string;
@@ -27,6 +27,7 @@ interface ExpandedModalProps {
   setSelectedModel: (model: ModelType) => void;
   availableModels: ModelConfig[];
   selectedThinkingMode: string;
+  selectedThinkingEffort?: ThinkingEffort;
   handleToggleThinkingMode: () => void;
   isPlanMode?: boolean;
   onTogglePlanMode?: () => void;
@@ -104,6 +105,7 @@ export const ExpandedModal = forwardRef<HTMLTextAreaElement, ExpandedModalProps>
   setSelectedModel,
   availableModels,
   selectedThinkingMode,
+  selectedThinkingEffort,
   handleToggleThinkingMode,
   isPlanMode,
   onTogglePlanMode,
@@ -251,7 +253,8 @@ export const ExpandedModal = forwardRef<HTMLTextAreaElement, ExpandedModalProps>
                   availableModels={availableModels}
                 />
                 <ThinkingModeToggle
-                  isEnabled={selectedThinkingMode === "on"}
+                  isEnabled={selectedThinkingMode === "adaptive"}
+                  effort={selectedThinkingEffort}
                   onToggle={handleToggleThinkingMode}
                   disabled={disabled}
                 />

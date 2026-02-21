@@ -172,21 +172,28 @@ export function isGeminiMessage(msg: unknown): msg is GeminiUnifiedMessage {
 }
 
 /**
- * Available Gemini models (Gemini 3 series only)
- * Updated: December 2025
+ * Available Gemini models (Gemini 3.1 / 3 series)
+ * Updated: February 2026
  */
 export const GEMINI_MODELS: GeminiModelInfo[] = [
   {
+    id: "gemini-3.1-pro-preview",
+    name: "Gemini 3.1 Pro (Preview)",
+    description: "Latest flagship model with 2M context (February 2026)",
+    contextWindow: 2_000_000,
+    isDefault: false,
+  },
+  {
     id: "gemini-3-flash",
     name: "Gemini 3 Flash",
-    description: "Latest and fastest model (December 17, 2025)",
+    description: "Fastest model for everyday coding",
     contextWindow: 1_000_000,
     isDefault: true,
   },
   {
     id: "gemini-3-pro",
     name: "Gemini 3 Pro",
-    description: "Most capable reasoning and coding model",
+    description: "Strong reasoning and coding capabilities",
     contextWindow: 1_000_000,
     isDefault: false,
   },

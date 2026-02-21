@@ -18,7 +18,7 @@ import { ThinkingModeToggle } from "./ThinkingModeToggle";
 import { PlanModeToggle } from "./PlanModeToggle";
 import { SessionToolbar } from "@/components/SessionToolbar";
 import { ContextWindowIndicator } from "@/components/widgets/ContextWindowIndicator";
-import { ModelType, ModelConfig } from "./types";
+import { ModelType, ModelConfig, ThinkingEffort } from "./types";
 import type { CodexRateLimits } from "@/types/codex";
 
 interface ControlBarProps {
@@ -32,6 +32,7 @@ interface ControlBarProps {
   setSelectedModel: (model: ModelType) => void;
   availableModels: ModelConfig[];
   selectedThinkingMode: string;
+  selectedThinkingEffort?: ThinkingEffort;
   handleToggleThinkingMode: () => void;
   isPlanMode?: boolean;
   onTogglePlanMode?: () => void;
@@ -66,6 +67,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   setSelectedModel,
   availableModels,
   selectedThinkingMode,
+  selectedThinkingEffort,
   handleToggleThinkingMode,
   isPlanMode,
   onTogglePlanMode,
@@ -142,7 +144,8 @@ export const ControlBar: React.FC<ControlBarProps> = ({
           />
 
           <ThinkingModeToggle
-            isEnabled={selectedThinkingMode === "on"}
+            isEnabled={selectedThinkingMode === "adaptive"}
+            effort={selectedThinkingEffort}
             onToggle={handleToggleThinkingMode}
             disabled={disabled}
           />

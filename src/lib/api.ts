@@ -963,14 +963,15 @@ export const api = {
   },
 
   /**
-   * Updates the thinking mode by modifying MAX_THINKING_TOKENS in settings.json
-   * @param enabled - Whether to enable thinking mode
-   * @param tokens - Optional token limit (defaults to 10000)
+   * Updates the thinking mode using Claude 4.6 Adaptive Thinking
+   * Sets CLAUDE_CODE_THINKING_EFFORT env var in settings.json
+   * @param enabled - Whether to enable adaptive thinking
+   * @param effort - Effort level: low, medium, high, max (only used when enabled)
    * @returns Promise resolving when the settings are updated
    */
-  async updateThinkingMode(enabled: boolean, tokens?: number): Promise<string> {
+  async updateThinkingMode(enabled: boolean, effort?: string): Promise<string> {
     try {
-      return await invoke<string>("update_thinking_mode", { enabled, tokens });
+      return await invoke<string>("update_thinking_mode", { enabled, effort });
     } catch (error) {
       console.error("Failed to update thinking mode:", error);
       throw error;
@@ -3792,6 +3793,30 @@ export const api = {
       return await invoke<string>("update_codex_reasoning_level", { level });
     } catch (error) {
       console.error("Failed to update Codex reasoning level:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Gets the Codex multi-agent configuration
+   */
+  async getCodexMultiAgentConfig(): Promise<{ enabled: boolean; subagentModel?: string; subagentReasoningEffort?: string }> {
+    try {
+      return await invoke("get_codex_multi_agent_config");
+    } catch (error) {
+      console.error("Failed to get Codex multi-agent config:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Sets the Codex multi-agent configuration
+   */
+  async setCodexMultiAgentConfig(config: { enabled: boolean; subagentModel?: string; subagentReasoningEffort?: string }): Promise<string> {
+    try {
+      return await invoke<string>("set_codex_multi_agent_config", { config });
+    } catch (error) {
+      console.error("Failed to set Codex multi-agent config:", error);
       throw error;
     }
   },

@@ -1,9 +1,10 @@
-import { ModelType, ThinkingMode, ExecutionEngineConfig } from "./types";
+import { ModelType, ThinkingMode, ThinkingEffort, ExecutionEngineConfig } from "./types";
 
 export interface InputState {
   prompt: string;
   selectedModel: ModelType;
   selectedThinkingMode: ThinkingMode;
+  selectedThinkingEffort?: ThinkingEffort;
   isExpanded: boolean;
   showCostPopover: boolean;
   cursorPosition: number;
@@ -14,7 +15,7 @@ export interface InputState {
 export type InputAction =
   | { type: "SET_PROMPT"; payload: string }
   | { type: "SET_MODEL"; payload: ModelType }
-  | { type: "SET_THINKING_MODE"; payload: ThinkingMode }
+  | { type: "SET_THINKING_MODE"; payload: { mode: ThinkingMode; effort?: ThinkingEffort } }
   | { type: "SET_EXPANDED"; payload: boolean }
   | { type: "SET_SHOW_COST_POPOVER"; payload: boolean }
   | { type: "SET_CURSOR_POSITION"; payload: number }
@@ -25,14 +26,15 @@ export type InputAction =
 export const initialState: InputState = {
   prompt: "",
   selectedModel: "sonnet",
-  selectedThinkingMode: "on",
+  selectedThinkingMode: "off",
+  selectedThinkingEffort: undefined,
   isExpanded: false,
   showCostPopover: false,
   cursorPosition: 0,
   executionEngineConfig: {
     engine: "claude",
     codexMode: "read-only",
-    codexModel: "gpt-5.2-codex",
+    codexModel: "gpt-5.3-codex",
     geminiModel: "gemini-3-flash",
   },
   enableProjectContext: false,
@@ -45,7 +47,7 @@ export function inputReducer(state: InputState, action: InputAction): InputState
     case "SET_MODEL":
       return { ...state, selectedModel: action.payload };
     case "SET_THINKING_MODE":
-      return { ...state, selectedThinkingMode: action.payload };
+      return { ...state, selectedThinkingMode: action.payload.mode, selectedThinkingEffort: action.payload.effort };
     case "SET_EXPANDED":
       return { ...state, isExpanded: action.payload };
     case "SET_SHOW_COST_POPOVER":
