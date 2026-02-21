@@ -2,10 +2,11 @@
  * Task Management Widgets - Claude Code 任务管理工具
  *
  * 支持 TaskCreate, TaskUpdate, TaskList, TaskGet 工具的渲染
+ * 与 TodoWidget 风格保持一致
  */
 
 import React from "react";
-import { CheckCircle2, Clock, Circle, Plus, List, Eye, Trash2 } from "lucide-react";
+import { CheckCircle2, Clock, Circle, Plus, List, Eye, Trash2, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -44,21 +45,25 @@ export interface TaskCreateWidgetProps {
 export const TaskCreateWidget: React.FC<TaskCreateWidgetProps> = ({
   subject,
   description,
-  activeForm,
 }) => {
   return (
-    <div className="flex items-center gap-2 py-1">
-      <Plus className="h-4 w-4 text-primary" />
-      <span className="text-xs text-muted-foreground">创建任务</span>
-      {subject && (
-        <span className="text-xs font-medium truncate max-w-[400px]">{subject}</span>
-      )}
-      {!subject && description && (
-        <span className="text-xs text-muted-foreground truncate max-w-[400px]">{description}</span>
-      )}
-      {!subject && !description && activeForm && (
-        <span className="text-xs text-muted-foreground italic">{activeForm}</span>
-      )}
+    <div className="flex items-start gap-3 p-2.5 rounded-lg border bg-card/50">
+      <div className="mt-0.5">
+        <Plus className="h-4 w-4 text-primary" />
+      </div>
+      <div className="flex-1 min-w-0">
+        {subject && (
+          <p className="text-sm truncate">{subject}</p>
+        )}
+        {description && (
+          <p className="text-xs text-muted-foreground truncate">
+            {description}
+          </p>
+        )}
+      </div>
+      <Badge variant="outline" className={cn("text-xs shrink-0", statusColors.pending)}>
+        {statusLabels.pending}
+      </Badge>
     </div>
   );
 };
@@ -85,28 +90,39 @@ export const TaskUpdateWidget: React.FC<TaskUpdateWidgetProps> = ({
 }) => {
   const displayStatus = status || "pending";
 
-  // Try to extract subject from result if not in input
-  const displaySubject = subject
-    || result?.content?.subject
-    || activeForm
-    || (typeof result?.content === 'string' ? result.content : null);
+  // Try to extract subject from result content
+  let displaySubject = subject || activeForm;
+  if (!displaySubject && result?.content) {
+    const content = typeof result.content === 'string' ? result.content : '';
+    // "Task #1 updated successfully" → extract nothing useful
+    // But toolUseResult might have task info
+    if (!displaySubject && content) {
+      displaySubject = content;
+    }
+  }
 
   return (
-    <div className="flex items-center gap-2 py-1">
-      {statusIcons[displayStatus] || statusIcons.pending}
-      <span className="text-xs text-muted-foreground">任务</span>
-      {taskId && (
-        <Badge variant="outline" className="text-xs px-1.5 py-0">#{taskId}</Badge>
-      )}
-      <Badge
-        variant="outline"
-        className={cn("text-xs px-1.5 py-0", statusColors[displayStatus])}
-      >
-        {statusLabels[displayStatus] || displayStatus}
-      </Badge>
-      {displaySubject && (
-        <span className="text-xs text-muted-foreground truncate max-w-[300px]">{displaySubject}</span>
-      )}
+    <div className="flex items-center gap-3 p-2.5 rounded-lg border bg-card/50">
+      <div>
+        {statusIcons[displayStatus] || statusIcons.pending}
+      </div>
+      <div className="flex-1 min-w-0 flex items-center gap-2">
+        {taskId && (
+          <span className="text-xs text-muted-foreground shrink-0">#{taskId}</span>
+        )}
+        {displaySubject && (
+          <p className="text-sm truncate">{displaySubject}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+        <Badge
+          variant="outline"
+          className={cn("text-xs", statusColors[displayStatus])}
+        >
+          {statusLabels[displayStatus] || displayStatus}
+        </Badge>
+      </div>
     </div>
   );
 };
@@ -121,9 +137,9 @@ export interface TaskListWidgetProps {
 
 export const TaskListWidget: React.FC<TaskListWidgetProps> = () => {
   return (
-    <div className="flex items-center gap-2 py-1">
+    <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-card/50">
       <List className="h-4 w-4 text-primary" />
-      <span className="text-xs text-muted-foreground">查看任务列表</span>
+      <span className="text-sm text-muted-foreground">查看任务列表</span>
     </div>
   );
 };
@@ -139,11 +155,11 @@ export interface TaskGetWidgetProps {
 
 export const TaskGetWidget: React.FC<TaskGetWidgetProps> = ({ taskId }) => {
   return (
-    <div className="flex items-center gap-2 py-1">
+    <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-card/50">
       <Eye className="h-4 w-4 text-primary" />
-      <span className="text-xs text-muted-foreground">查看任务</span>
+      <span className="text-sm text-muted-foreground">查看任务</span>
       {taskId && (
-        <Badge variant="outline" className="text-xs px-1.5 py-0">#{taskId}</Badge>
+        <Badge variant="outline" className="text-xs">#{taskId}</Badge>
       )}
     </div>
   );
