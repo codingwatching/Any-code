@@ -3,7 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FloatingPromptInputProps, FloatingPromptInputRef, ThinkingMode, ThinkingEffort, ModelType, ModelConfig } from "./types";
-import { THINKING_MODES, getModels, MODELS } from "./constants";
+import { getModels } from "./constants";
 import { MODEL_NAMES_UPDATED_EVENT } from "@/lib/modelNameParser";
 import { useImageHandling } from "./hooks/useImageHandling";
 import { useFileSelection } from "./hooks/useFileSelection";
