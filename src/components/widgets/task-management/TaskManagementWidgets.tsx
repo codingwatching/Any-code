@@ -47,20 +47,15 @@ export const TaskCreateWidget: React.FC<TaskCreateWidgetProps> = ({
   description,
 }) => {
   return (
-    <div className="flex items-start gap-3 p-2.5 rounded-lg border bg-card/50">
-      <div className="mt-0.5">
-        <Plus className="h-4 w-4 text-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        {subject && (
-          <p className="text-sm truncate">{subject}</p>
-        )}
-        {description && (
-          <p className="text-xs text-muted-foreground truncate">
-            {description}
-          </p>
-        )}
-      </div>
+    <div className="flex items-center gap-2 py-0.5">
+      <Plus className="h-4 w-4 text-primary" />
+      {subject ? (
+        <span className="text-sm truncate max-w-[400px]">{subject}</span>
+      ) : description ? (
+        <span className="text-xs text-muted-foreground truncate max-w-[400px]">{description}</span>
+      ) : (
+        <span className="text-xs text-muted-foreground">新任务</span>
+      )}
       <Badge variant="outline" className={cn("text-xs shrink-0", statusColors.pending)}>
         {statusLabels.pending}
       </Badge>
@@ -90,31 +85,34 @@ export const TaskUpdateWidget: React.FC<TaskUpdateWidgetProps> = ({
 }) => {
   const displayStatus = status || "pending";
 
-  // Try to extract subject from result's sourceMessage.toolUseResult
-  let displaySubject = subject || activeForm;
-  if (!displaySubject && result?.sourceMessage?.toolUseResult?.task?.subject) {
-    displaySubject = result.sourceMessage.toolUseResult.task.subject;
-  }
+  // Extract statusChange from toolUseResult if available
+  const toolUseResult = result?.sourceMessage?.toolUseResult;
+  const statusChange = toolUseResult?.statusChange;
+  const fromStatus = statusChange?.from;
+
+  // Try to get subject from various sources
+  const displaySubject = subject || activeForm || toolUseResult?.subject;
 
   return (
-    <div className="flex items-center gap-3 p-2.5 rounded-lg border bg-card/50">
-      <div>
-        {statusIcons[displayStatus] || statusIcons.pending}
-      </div>
-      <div className="flex-1 min-w-0 flex items-center gap-2">
-        {taskId && (
-          <span className="text-xs text-muted-foreground shrink-0">#{taskId}</span>
-        )}
-        {displaySubject && (
-          <p className="text-sm truncate">{displaySubject}</p>
-        )}
-      </div>
-      <Badge
-        variant="outline"
-        className={cn("text-xs shrink-0", statusColors[displayStatus])}
-      >
-        {statusLabels[displayStatus] || displayStatus}
-      </Badge>
+    <div className="flex items-center gap-2 py-0.5">
+      <div>{statusIcons[displayStatus] || statusIcons.pending}</div>
+      {taskId && (
+        <span className="text-xs font-mono text-muted-foreground">#{taskId}</span>
+      )}
+      {displaySubject ? (
+        <span className="text-sm truncate max-w-[400px]">{displaySubject}</span>
+      ) : fromStatus ? (
+        <span className="text-xs text-muted-foreground">
+          {statusLabels[fromStatus] || fromStatus} → {statusLabels[displayStatus] || displayStatus}
+        </span>
+      ) : (
+        <Badge
+          variant="outline"
+          className={cn("text-xs", statusColors[displayStatus])}
+        >
+          {statusLabels[displayStatus] || displayStatus}
+        </Badge>
+      )}
     </div>
   );
 };
@@ -129,9 +127,9 @@ export interface TaskListWidgetProps {
 
 export const TaskListWidget: React.FC<TaskListWidgetProps> = () => {
   return (
-    <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-card/50">
-      <List className="h-4 w-4 text-primary" />
-      <span className="text-sm text-muted-foreground">查看任务列表</span>
+    <div className="flex items-center gap-2 py-0.5">
+      <List className="h-4 w-4 text-muted-foreground" />
+      <span className="text-xs text-muted-foreground">查看任务列表</span>
     </div>
   );
 };
@@ -147,11 +145,11 @@ export interface TaskGetWidgetProps {
 
 export const TaskGetWidget: React.FC<TaskGetWidgetProps> = ({ taskId }) => {
   return (
-    <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-card/50">
-      <Eye className="h-4 w-4 text-primary" />
-      <span className="text-sm text-muted-foreground">查看任务</span>
+    <div className="flex items-center gap-2 py-0.5">
+      <Eye className="h-4 w-4 text-muted-foreground" />
+      <span className="text-xs text-muted-foreground">查看任务</span>
       {taskId && (
-        <Badge variant="outline" className="text-xs">#{taskId}</Badge>
+        <span className="text-xs font-mono text-muted-foreground">#{taskId}</span>
       )}
     </div>
   );
