@@ -28978,54 +28978,44 @@ var DEFAULT_CONFIG = {
   ],
   EXCLUDE_PATTERNS: [
     // Node.js / JavaScript
-    "**/node_modules/**",
-    // Match node_modules at any depth
-    "**/*.min.js",
-    // Match minified JS files anywhere
-    "**/*.min.css",
-    // Match minified CSS files anywhere
-    "**/dist/**",
-    // Match dist directory at any depth
-    "**/build/**",
-    // Match build directory at any depth
-    "**/coverage/**",
-    // Match coverage directory
+    "node_modules/**",
+    "*.min.js",
+    "*.min.css",
+    "dist/**",
+    "build/**",
     // Python
-    "**/__pycache__/**",
-    // Match __pycache__ at any depth
-    "**/*.pyc",
-    "**/*.pyo",
-    "**/*.pyd",
-    "**/venv/**",
-    "**/.venv/**",
-    "**/env/**",
-    "**/.env/**",
-    "**/*.egg-info/**",
-    "**/.eggs/**",
-    "**/.pytest_cache/**",
-    "**/.mypy_cache/**",
-    "**/.tox/**",
-    "**/htmlcov/**",
-    "**/.coverage",
+    "__pycache__/**",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    "venv/**",
+    ".venv/**",
+    "env/**",
+    ".env/**",
+    "*.egg-info/**",
+    ".eggs/**",
+    ".pytest_cache/**",
+    ".mypy_cache/**",
+    ".tox/**",
+    "htmlcov/**",
+    ".coverage",
     // Version Control
-    "**/.git/**",
-    "**/.svn/**",
-    "**/.hg/**",
+    ".git/**",
+    ".svn/**",
+    ".hg/**",
     // IDEs and Editors
-    "**/.idea/**",
-    "**/.vscode/**",
-    "**/.DS_Store",
+    ".idea/**",
+    ".vscode/**",
+    ".DS_Store",
     // Build Systems
-    "**/.gradle/**",
-    "**/target/**",
-    "**/bin/**",
-    "**/obj/**",
+    ".gradle/**",
+    "target/**",
+    "bin/**",
+    "obj/**",
     // Logs and temporary files
-    "**/*.log",
-    "**/pip-log.txt",
-    "**/pip-delete-this-directory.txt",
-    "**/*.tmp",
-    "**/*.temp"
+    "*.log",
+    "pip-log.txt",
+    "pip-delete-this-directory.txt"
   ]
 };
 
@@ -29036,44 +29026,10 @@ var import_os2 = require("os");
 var import_fs = require("fs");
 var logDir = (0, import_path2.join)((0, import_os2.homedir)(), ".acemcp", "log");
 var logFile = (0, import_path2.join)(logDir, "acemcp.log");
-var MAX_LOG_SIZE = 5 * 1024 * 1024;
-var MAX_LOG_FILES = 10;
 if (!(0, import_fs.existsSync)(logDir)) {
   (0, import_fs.mkdirSync)(logDir, { recursive: true });
 }
-function checkAndRotateLog() {
-  if (!(0, import_fs.existsSync)(logFile)) {
-    return;
-  }
-  try {
-    const stats = (0, import_fs.statSync)(logFile);
-    if (stats.size >= MAX_LOG_SIZE) {
-      rotateLog();
-    }
-  } catch (error) {
-  }
-}
-function rotateLog() {
-  try {
-    for (let i = MAX_LOG_FILES - 1; i >= 1; i--) {
-      const oldFile = `${logFile}.${i}`;
-      const newFile = `${logFile}.${i + 1}`;
-      if ((0, import_fs.existsSync)(oldFile)) {
-        if (i === MAX_LOG_FILES - 1) {
-          (0, import_fs.unlinkSync)(oldFile);
-        } else {
-          (0, import_fs.renameSync)(oldFile, newFile);
-        }
-      }
-    }
-    if ((0, import_fs.existsSync)(logFile)) {
-      (0, import_fs.renameSync)(logFile, `${logFile}.1`);
-    }
-  } catch (error) {
-  }
-}
-checkAndRotateLog();
-var baseLogger = (0, import_pino.default)(
+var logger = (0, import_pino.default)(
   {
     level: process.env.LOG_LEVEL || "info",
     timestamp: import_pino.default.stdTimeFunctions.isoTime
@@ -29085,36 +29041,6 @@ var baseLogger = (0, import_pino.default)(
     mkdir: true
   })
 );
-var logger = baseLogger;
-logger.exception = (message, error, context) => {
-  const errorObj = error instanceof Error ? error : new Error(String(error));
-  const errorMessage = `${message}: ${errorObj.message}`;
-  const stackTrace = errorObj.stack || "No stack trace available";
-  logger.error(
-    {
-      ...context,
-      error: errorObj.message,
-      stack: stackTrace
-    },
-    errorMessage
-  );
-  checkAndRotateLog();
-};
-var originalError = logger.error.bind(logger);
-var originalWarn = logger.warn.bind(logger);
-var originalInfo = logger.info.bind(logger);
-logger.error = ((...args) => {
-  originalError(...args);
-  checkAndRotateLog();
-});
-logger.warn = ((...args) => {
-  originalWarn(...args);
-  checkAndRotateLog();
-});
-logger.info = ((...args) => {
-  originalInfo(...args);
-  checkAndRotateLog();
-});
 
 // src/config/index.ts
 var configInstance = null;
@@ -38673,16 +38599,8 @@ function getRelativePath(base, target) {
 var ENCODINGS = ["utf-8", "gbk", "gb2312", "latin1"];
 function isValidText(text) {
   const replacementChars = (text.match(/�/g) || []).length;
-  if (text.length > 0) {
-    if (text.length < 100) {
-      if (replacementChars > 5) {
-        return false;
-      }
-    } else {
-      if (replacementChars / text.length > 0.05) {
-        return false;
-      }
-    }
+  if (replacementChars > text.length * 0.1) {
+    return false;
   }
   const invalidChars = /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text);
   if (invalidChars) {
@@ -38755,56 +38673,13 @@ function shouldExclude(filePath, relativePath, ig) {
   if (ig.ignores(normalizedRelPath)) {
     return true;
   }
-  let isDirectory = false;
   try {
     const stats = (0, import_fs3.statSync)(filePath);
-    isDirectory = stats.isDirectory();
-    if (isDirectory) {
-      if (ig.ignores(normalizedRelPath + "/")) {
-        return true;
-      }
+    if (stats.isDirectory()) {
+      return ig.ignores(normalizedRelPath + "/");
     }
   } catch {
-    isDirectory = !/\.[^/]+$/.test(normalizedRelPath);
-  }
-  const segments = normalizedRelPath.split("/");
-  const commonExcludeDirs = [
-    "node_modules",
-    "__pycache__",
-    ".git",
-    ".svn",
-    ".hg",
-    "venv",
-    ".venv",
-    "env",
-    ".env",
-    "dist",
-    "build",
-    "coverage",
-    ".idea",
-    ".vscode",
-    ".gradle",
-    "target",
-    "bin",
-    "obj",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".tox",
-    ".eggs",
-    "htmlcov"
-  ];
-  for (let i = 0; i < segments.length - 1; i++) {
-    if (commonExcludeDirs.includes(segments[i])) {
-      logger.debug(`Excluded by segment match: ${normalizedRelPath} (matched: ${segments[i]})`);
-      return true;
-    }
-  }
-  if (isDirectory && segments.length > 0) {
-    const lastSegment = segments[segments.length - 1];
-    if (commonExcludeDirs.includes(lastSegment)) {
-      logger.debug(`Excluded by segment match: ${normalizedRelPath} (matched: ${lastSegment})`);
-      return true;
-    }
+    return true;
   }
   return false;
 }
@@ -38815,13 +38690,8 @@ function collectFiles(rootPath, textExtensions, excludePatterns) {
   if ((0, import_fs3.existsSync)(gitignorePath)) {
     try {
       const gitignoreContent = (0, import_fs3.readFileSync)(gitignorePath, "utf-8");
-      const gitignorePatterns = gitignoreContent.split("\n").map((line) => line.trim()).filter((line) => {
-        return line && !line.startsWith("#") && !line.startsWith("!");
-      });
-      if (gitignorePatterns.length > 0) {
-        ig.add(gitignorePatterns);
-        logger.debug(`Loaded ${gitignorePatterns.length} patterns from .gitignore`);
-      }
+      const gitignorePatterns = gitignoreContent.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+      ig.add(gitignorePatterns);
     } catch (error) {
       logger.warn(`Failed to read .gitignore: ${String(error)}`);
     }
@@ -38915,12 +38785,7 @@ var IndexManager = class {
   httpClient;
   constructor(storagePath, baseUrl, token, textExtensions, batchSize, maxLinesPerBlob, excludePatterns, enableConcurrentUpload, maxConcurrentBatches) {
     this.storagePath = storagePath;
-    if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
-      this.baseUrl = `https://${baseUrl}`.replace(/\/$/, "");
-      logger.info(`Auto-added https:// protocol to base_url: ${this.baseUrl}`);
-    } else {
-      this.baseUrl = baseUrl.replace(/\/$/, "");
-    }
+    this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
     this.textExtensions = textExtensions;
     this.batchSize = batchSize;
@@ -38936,9 +38801,6 @@ var IndexManager = class {
       },
       timeout: 6e4
     });
-    logger.info(
-      `IndexManager initialized: storage_path=${storagePath}, batch_size=${batchSize}, max_lines_per_blob=${maxLinesPerBlob}, exclude_patterns=${excludePatterns.length} patterns, concurrent_upload=${enableConcurrentUpload}, max_concurrent_batches=${maxConcurrentBatches}`
-    );
   }
   /**
    * Normalize project path with WSL support
@@ -38965,59 +38827,24 @@ var IndexManager = class {
     writeJsonFile(this.getProjectsFilePath(), projects);
   }
   /**
-   * Split lines preserving original newline characters
-   * Mimics Python's splitlines(keepends=True) to ensure hash consistency
-   * Handles \n (Unix), \r\n (Windows), and \r (old Mac) line endings
-   */
-  splitLinesPreservingNewlines(content) {
-    const lines = [];
-    let start = 0;
-    for (let i = 0; i < content.length; i++) {
-      if (content[i] === "\n") {
-        lines.push(content.substring(start, i + 1));
-        start = i + 1;
-      } else if (content[i] === "\r") {
-        if (i + 1 < content.length && content[i + 1] === "\n") {
-          lines.push(content.substring(start, i + 2));
-          start = i + 2;
-          i++;
-        } else {
-          lines.push(content.substring(start, i + 1));
-          start = i + 1;
-        }
-      }
-    }
-    if (start < content.length) {
-      lines.push(content.substring(start));
-    }
-    return lines;
-  }
-  /**
    * Split file content into chunks if it exceeds max lines
-   * Preserves original newline characters for hash consistency
    */
   splitBlob(blob) {
-    const lines = this.splitLinesPreservingNewlines(blob.content);
-    const totalLines = lines.length;
-    if (totalLines <= this.maxLinesPerBlob) {
+    const lines = blob.content.split("\n");
+    if (lines.length <= this.maxLinesPerBlob) {
       return [blob];
     }
     const chunks = [];
-    const numChunks = Math.ceil(totalLines / this.maxLinesPerBlob);
-    for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
-      const startLine = chunkIdx * this.maxLinesPerBlob;
-      const endLine = Math.min(startLine + this.maxLinesPerBlob, totalLines);
-      const chunkLines = lines.slice(startLine, endLine);
-      const chunkContent = chunkLines.join("");
-      const chunkPath = `${blob.path}#chunk${chunkIdx + 1}of${numChunks}`;
+    for (let i = 0; i < lines.length; i += this.maxLinesPerBlob) {
+      const chunkLines = lines.slice(i, Math.min(i + this.maxLinesPerBlob, lines.length));
       chunks.push({
-        path: chunkPath,
-        content: chunkContent,
-        startLine: startLine + 1,
-        endLine
+        path: blob.path,
+        content: chunkLines.join("\n"),
+        startLine: i + 1,
+        endLine: i + chunkLines.length
       });
     }
-    logger.info(`Split ${blob.path} (${totalLines} lines) into ${numChunks} chunks`);
+    logger.info(`Split ${blob.path} into ${chunks.length} chunks (${lines.length} total lines)`);
     return chunks;
   }
   /**
@@ -39131,19 +38958,44 @@ var IndexManager = class {
         const hash = calculateBlobName(blob.path, blob.content);
         blobHashMap.set(hash, blob);
       }
+      const currentHashes = new Set(blobHashMap.keys());
       const newHashes = /* @__PURE__ */ new Set();
       const existingHashes = /* @__PURE__ */ new Set();
-      for (const hash of blobHashMap.keys()) {
+      const staleHashes = /* @__PURE__ */ new Set();
+      for (const hash of currentHashes) {
         if (existingBlobNames.has(hash)) {
           existingHashes.add(hash);
         } else {
           newHashes.add(hash);
         }
       }
+      for (const hash of existingBlobNames) {
+        if (!currentHashes.has(hash)) {
+          staleHashes.add(hash);
+        }
+      }
       logger.info(
-        `Total: ${blobs.length} blobs, Existing: ${existingHashes.size}, New: ${newHashes.size}, To upload: ${newHashes.size}`
+        `Total: ${blobs.length} blobs, Existing: ${existingHashes.size}, New: ${newHashes.size}, Stale (to remove): ${staleHashes.size}, To upload: ${newHashes.size}`
       );
       if (newHashes.size === 0) {
+        if (staleHashes.size > 0) {
+          logger.info(`Removing ${staleHashes.size} stale blobs from index`);
+          const cleanedBlobNames = Array.from(existingHashes);
+          projects[normalizedPath] = cleanedBlobNames;
+          this.saveProjects(projects);
+          return {
+            status: "success",
+            message: `Project indexed with ${cleanedBlobNames.length} total blobs (removed ${staleHashes.size} stale blobs)`,
+            stats: {
+              totalBlobs: cleanedBlobNames.length,
+              existingBlobs: existingHashes.size,
+              newBlobs: 0,
+              staleBlobs: staleHashes.size,
+              successBatches: 0,
+              totalBatches: 0
+            }
+          };
+        }
         logger.info("No new blobs to upload, project already indexed");
         return {
           status: "success",
@@ -39152,6 +39004,7 @@ var IndexManager = class {
             totalBlobs: existingHashes.size,
             existingBlobs: existingHashes.size,
             newBlobs: 0,
+            staleBlobs: 0,
             successBatches: 0,
             totalBatches: 0
           }
@@ -39183,7 +39036,8 @@ var IndexManager = class {
       projects[normalizedPath] = allBlobNames;
       this.saveProjects(projects);
       const successBatches = batches.length - failedBatches.length;
-      const message = blobsToUpload.length > 0 ? `Project indexed with ${allBlobNames.length} total blobs (existing: ${existingHashes.size}, new: ${uploadedBlobNames.length}, batches: ${successBatches}/${batches.length} successful)` : `Project indexed with ${allBlobNames.length} total blobs (all existing, no upload needed)`;
+      const staleInfo = staleHashes.size > 0 ? `, removed ${staleHashes.size} stale` : "";
+      const message = blobsToUpload.length > 0 ? `Project indexed with ${allBlobNames.length} total blobs (existing: ${existingHashes.size}, new: ${uploadedBlobNames.length}${staleInfo}, batches: ${successBatches}/${batches.length} successful)` : `Project indexed with ${allBlobNames.length} total blobs (all existing, no upload needed)`;
       logger.info(message);
       return {
         status: "success",
@@ -39192,6 +39046,7 @@ var IndexManager = class {
           totalBlobs: allBlobNames.length,
           existingBlobs: existingHashes.size,
           newBlobs: uploadedBlobNames.length,
+          staleBlobs: staleHashes.size,
           successBatches,
           totalBatches: batches.length
         }
@@ -39221,6 +39076,40 @@ var IndexManager = class {
    */
   getProjects() {
     return this.loadProjects();
+  }
+  /**
+   * Force reindex a project (delete existing index and reindex from scratch)
+   */
+  async reindexProject(projectRootPath) {
+    const normalizedPath = this.normalizeProjectPathInternal(projectRootPath);
+    logger.info(`Force reindexing project ${normalizedPath} (original: ${projectRootPath})`);
+    await this.deleteProject(projectRootPath);
+    return this.indexProject(projectRootPath);
+  }
+  /**
+   * Get stale blob hashes for a project (blobs in storage but not in current files)
+   * This is useful for the search service to pass deleted_blobs to the API
+   */
+  getStaleBlobs(projectRootPath) {
+    const normalizedPath = this.normalizeProjectPathInternal(projectRootPath);
+    const projects = this.loadProjects();
+    const existingBlobNames = new Set(projects[normalizedPath] || []);
+    if (existingBlobNames.size === 0) {
+      return [];
+    }
+    const blobs = this.collectFilesFromProject(normalizedPath);
+    const currentHashes = /* @__PURE__ */ new Set();
+    for (const blob of blobs) {
+      const hash = calculateBlobName(blob.path, blob.content);
+      currentHashes.add(hash);
+    }
+    const staleHashes = [];
+    for (const hash of existingBlobNames) {
+      if (!currentHashes.has(hash)) {
+        staleHashes.push(hash);
+      }
+    }
+    return staleHashes;
   }
 };
 
@@ -39257,8 +39146,9 @@ var SearchService = class {
         return `Error: Failed to index project before search. ${indexResult.message}`;
       }
       if (indexResult.stats) {
+        const staleInfo = indexResult.stats.staleBlobs ? `, stale removed=${indexResult.stats.staleBlobs}` : "";
         logger.info(
-          `Auto-indexing completed: total=${indexResult.stats.totalBlobs}, existing=${indexResult.stats.existingBlobs}, new=${indexResult.stats.newBlobs}`
+          `Auto-indexing completed: total=${indexResult.stats.totalBlobs}, existing=${indexResult.stats.existingBlobs}, new=${indexResult.stats.newBlobs}${staleInfo}`
         );
       }
       const projects = this.indexManager.getProjects();
@@ -39305,16 +39195,8 @@ var SearchService = class {
 // src/tools/searchContext.ts
 async function searchContextTool(args) {
   try {
-    const project_root_path = args.project_root_path;
+    const project_root_path = args.project_root_path || process.cwd();
     const query = args.query;
-    if (!project_root_path) {
-      return [
-        {
-          type: "text",
-          text: "Error: project_root_path is required"
-        }
-      ];
-    }
     if (!query) {
       return [
         {
@@ -39380,14 +39262,14 @@ function createMcpServer() {
           properties: {
             project_root_path: {
               type: "string",
-              description: "Absolute path to the project root directory. Supports cross-platform paths: Windows (C:/Users/...), WSL UNC (\\\\wsl$\\Ubuntu\\home\\...), Unix (/home/...), WSL-to-Windows (/mnt/c/...). Paths are automatically normalized."
+              description: "Absolute path to the project root directory. If not provided, defaults to current working directory. Supports cross-platform paths: Windows (C:/Users/...), WSL UNC (\\\\wsl$\\Ubuntu\\home\\...), Unix (/home/...), WSL-to-Windows (/mnt/c/...). Paths are automatically normalized."
             },
             query: {
               type: "string",
               description: "Natural language search query to find relevant code context. This tool performs semantic search and returns code snippets that match your query. Examples: 'logging configuration setup initialization logger' (finds logging setup code), 'user authentication login' (finds auth-related code), 'database connection pool' (finds DB connection code), 'error handling exception' (finds error handling patterns), 'API endpoint routes' (finds API route definitions). The tool returns formatted text snippets with file paths and line numbers showing where the relevant code is located."
             }
           },
-          required: ["project_root_path", "query"]
+          required: ["query"]
         }
       }
     ];
