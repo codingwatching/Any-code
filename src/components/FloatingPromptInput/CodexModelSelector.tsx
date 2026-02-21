@@ -3,6 +3,10 @@ import { ChevronUp, Check, Star, Brain, Cpu, Rocket, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  getCachedCodexModelNames,
+  CODEX_MODEL_NAMES_UPDATED_EVENT,
+} from "@/lib/modelNameParser";
 
 /**
  * Codex model configuration
@@ -16,10 +20,12 @@ export interface CodexModelConfig {
 }
 
 /**
- * Codex models (GPT-5.3, GPT-5.2, GPT-5.1 series)
+ * Default Codex models used as fallback when no cached data is available.
+ * Intentionally kept as the known baseline; dynamically discovered models
+ * from stream init messages will merge/override these.
  * Updated: February 2026
  */
-export const CODEX_MODELS: CodexModelConfig[] = [
+const DEFAULT_CODEX_MODELS: CodexModelConfig[] = [
   {
     id: 'gpt-5.3-codex',
     name: 'GPT-5.3 Codex',
@@ -42,42 +48,130 @@ export const CODEX_MODELS: CodexModelConfig[] = [
     isDefault: false,
   },
   {
+    id: 'gpt-5.2',
+    name: 'GPT 5.2',
+    description: 'Latest flagship model',
+    icon: <Star className="h-4 w-4 text-yellow-500" />,
+    isDefault: false,
+  },
+  {
+    id: 'gpt-5.1-codex-max',
+    name: 'GPT 5.1 Codex Max',
+    description: 'Balanced speed and quality for code',
+    icon: <Rocket className="h-4 w-4 text-green-500" />,
+    isDefault: false,
+  },
+  {
     id: 'gpt-5.1-codex',
-    name: 'GPT-5.1 Codex',
-    description: '专注代码生成的基础版本',
+    name: 'GPT 5.1 Codex',
+    description: 'Code generation baseline',
     icon: <Cpu className="h-4 w-4 text-blue-500" />,
     isDefault: false,
   },
   {
     id: 'gpt-5.1',
-    name: 'GPT-5.1',
-    description: '通用大语言模型',
+    name: 'GPT 5.1',
+    description: 'General-purpose LLM',
     icon: <Brain className="h-4 w-4 text-orange-500" />,
     isDefault: false,
   },
 ];
 
+/**
+ * Icon assignment for dynamically discovered Codex models.
+ * Falls back to a generic icon if no pattern matches.
+ */
+function getCodexModelIcon(modelId: string): React.ReactNode {
+  const lower = modelId.toLowerCase();
+  if (lower.includes('codex') && lower.includes('max')) {
+    return <Rocket className="h-4 w-4 text-green-500" />;
+  }
+  if (lower.includes('codex')) {
+    return <Rocket className="h-4 w-4 text-emerald-500" />;
+  }
+  if (lower.includes('o3') || lower.includes('o4')) {
+    return <Brain className="h-4 w-4 text-purple-500" />;
+  }
+  return <Cpu className="h-4 w-4 text-blue-500" />;
+}
+
+/**
+ * Build the Codex model list by merging defaults with cached model names.
+ * Cached entries update display names of known models and can add new ones.
+ */
+export function getCodexModels(): CodexModelConfig[] {
+  const cached = getCachedCodexModelNames();
+  const cachedIds = new Set(Object.keys(cached));
+
+  // Start from defaults, updating display names from cache
+  const models: CodexModelConfig[] = DEFAULT_CODEX_MODELS.map((model) => {
+    if (cached[model.id]) {
+      cachedIds.delete(model.id);
+      return { ...model, name: cached[model.id] };
+    }
+    return model;
+  });
+
+  // Add any new models discovered from the stream that are not in defaults
+  for (const modelId of cachedIds) {
+    models.push({
+      id: modelId,
+      name: cached[modelId],
+      description: 'Discovered from stream',
+      icon: getCodexModelIcon(modelId),
+      isDefault: false,
+    });
+  }
+
+  return models;
+}
+
+/**
+ * Static export for backward compatibility.
+ * Prefer using getCodexModels() for dynamic names.
+ */
+export const CODEX_MODELS: CodexModelConfig[] = getCodexModels();
+
 interface CodexModelSelectorProps {
   selectedModel: string | undefined;
   onModelChange: (model: string) => void;
   disabled?: boolean;
+  availableModels?: CodexModelConfig[];
 }
 
 /**
- * CodexModelSelector component - Dropdown for selecting Codex model
- * Styled similarly to Claude's ModelSelector
+ * CodexModelSelector component - Dropdown for selecting Codex model.
+ * Supports dynamic model discovery via localStorage cache and custom events,
+ * following the same pattern as Claude's ModelSelector.
  */
 export const CodexModelSelector: React.FC<CodexModelSelectorProps> = ({
   selectedModel,
   onModelChange,
   disabled = false,
+  availableModels: availableModelsProp,
 }) => {
   const [open, setOpen] = React.useState(false);
+  const [dynamicModels, setDynamicModels] = React.useState<CodexModelConfig[]>(() => getCodexModels());
+
+  // Listen for Codex model name updates from stream init messages
+  React.useEffect(() => {
+    const handleUpdate = () => {
+      setDynamicModels(getCodexModels());
+    };
+
+    window.addEventListener(CODEX_MODEL_NAMES_UPDATED_EVENT, handleUpdate);
+    return () => {
+      window.removeEventListener(CODEX_MODEL_NAMES_UPDATED_EVENT, handleUpdate);
+    };
+  }, []);
+
+  // Allow prop override (same pattern as Claude's ModelSelector)
+  const models = availableModelsProp || dynamicModels;
 
   // Find selected model or default
-  const selectedModelData = CODEX_MODELS.find(m => m.id === selectedModel)
-    || CODEX_MODELS.find(m => m.isDefault)
-    || CODEX_MODELS[0];
+  const selectedModelData = models.find(m => m.id === selectedModel)
+    || models.find(m => m.isDefault)
+    || models[0];
 
   return (
     <Popover
@@ -99,9 +193,9 @@ export const CodexModelSelector: React.FC<CodexModelSelectorProps> = ({
       content={
         <div className="w-[320px] p-1">
           <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border/50 mb-1">
-            选择 Codex 模型
+            Select Codex Model
           </div>
-          {CODEX_MODELS.map((model) => {
+          {models.map((model) => {
             const isSelected = selectedModel === model.id ||
               (!selectedModel && model.isDefault);
             return (
@@ -126,7 +220,7 @@ export const CodexModelSelector: React.FC<CodexModelSelectorProps> = ({
                     )}
                     {model.isDefault && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                        推荐
+                        Default
                       </span>
                     )}
                   </div>

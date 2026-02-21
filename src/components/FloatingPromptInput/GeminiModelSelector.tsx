@@ -3,6 +3,10 @@ import { ChevronUp, Check, Star, Sparkles, Brain, FlaskConical, Gauge } from "lu
 import { Button } from "@/components/ui/button";
 import { Popover } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  getCachedGeminiModelNames,
+  GEMINI_MODEL_NAMES_UPDATED_EVENT,
+} from "@/lib/modelNameParser";
 
 /**
  * Gemini model configuration
@@ -16,10 +20,12 @@ export interface GeminiModelConfig {
 }
 
 /**
- * Gemini models (Gemini 3.1, 3 series)
+ * Default Gemini models used as fallback when no cached data is available.
+ * Intentionally kept as the known baseline; dynamically discovered models
+ * from stream init messages will merge/override these.
  * Updated: February 2026
  */
-export const GEMINI_MODELS: GeminiModelConfig[] = [
+const DEFAULT_GEMINI_MODELS: GeminiModelConfig[] = [
   {
     id: 'gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro (Preview)',
@@ -44,40 +50,117 @@ export const GEMINI_MODELS: GeminiModelConfig[] = [
   {
     id: 'gemini-3-pro-preview',
     name: 'Gemini 3 Pro (Preview)',
-    description: '实验性预览版本',
+    description: 'Experimental preview version',
     icon: <FlaskConical className="h-4 w-4 text-purple-500" />,
     isDefault: false,
   },
   {
     id: 'gemini-3-flash-thinking',
     name: 'Gemini 3 Flash Thinking',
-    description: '带思考链的快速模型',
+    description: 'Fast model with chain-of-thought',
     icon: <Brain className="h-4 w-4 text-green-500" />,
     isDefault: false,
   },
 ];
 
+/**
+ * Icon assignment for dynamically discovered Gemini models.
+ * Falls back to a generic icon if no pattern matches.
+ */
+function getGeminiModelIcon(modelId: string): React.ReactNode {
+  const lower = modelId.toLowerCase();
+  if (lower.includes('thinking')) {
+    return <Brain className="h-4 w-4 text-green-500" />;
+  }
+  if (lower.includes('preview') || lower.includes('exp')) {
+    return <FlaskConical className="h-4 w-4 text-purple-500" />;
+  }
+  if (lower.includes('flash')) {
+    return <Gauge className="h-4 w-4 text-yellow-500" />;
+  }
+  if (lower.includes('pro') || lower.includes('ultra')) {
+    return <Sparkles className="h-4 w-4 text-blue-500" />;
+  }
+  return <Sparkles className="h-4 w-4 text-blue-400" />;
+}
+
+/**
+ * Build the Gemini model list by merging defaults with cached model names.
+ * Cached entries update display names of known models and can add new ones.
+ */
+export function getGeminiModels(): GeminiModelConfig[] {
+  const cached = getCachedGeminiModelNames();
+  const cachedIds = new Set(Object.keys(cached));
+
+  // Start from defaults, updating display names from cache
+  const models: GeminiModelConfig[] = DEFAULT_GEMINI_MODELS.map((model) => {
+    if (cached[model.id]) {
+      cachedIds.delete(model.id);
+      return { ...model, name: cached[model.id] };
+    }
+    return model;
+  });
+
+  // Add any new models discovered from the stream that are not in defaults
+  for (const modelId of cachedIds) {
+    models.push({
+      id: modelId,
+      name: cached[modelId],
+      description: 'Discovered from stream',
+      icon: getGeminiModelIcon(modelId),
+      isDefault: false,
+    });
+  }
+
+  return models;
+}
+
+/**
+ * Static export for backward compatibility.
+ * Prefer using getGeminiModels() for dynamic names.
+ */
+export const GEMINI_MODELS: GeminiModelConfig[] = getGeminiModels();
+
 interface GeminiModelSelectorProps {
   selectedModel: string | undefined;
   onModelChange: (model: string) => void;
   disabled?: boolean;
+  availableModels?: GeminiModelConfig[];
 }
 
 /**
- * GeminiModelSelector component - Dropdown for selecting Gemini model
- * Styled similarly to Claude's ModelSelector
+ * GeminiModelSelector component - Dropdown for selecting Gemini model.
+ * Supports dynamic model discovery via localStorage cache and custom events,
+ * following the same pattern as Claude's ModelSelector.
  */
 export const GeminiModelSelector: React.FC<GeminiModelSelectorProps> = ({
   selectedModel,
   onModelChange,
   disabled = false,
+  availableModels: availableModelsProp,
 }) => {
   const [open, setOpen] = React.useState(false);
+  const [dynamicModels, setDynamicModels] = React.useState<GeminiModelConfig[]>(() => getGeminiModels());
+
+  // Listen for Gemini model name updates from stream init messages
+  React.useEffect(() => {
+    const handleUpdate = () => {
+      setDynamicModels(getGeminiModels());
+    };
+
+    window.addEventListener(GEMINI_MODEL_NAMES_UPDATED_EVENT, handleUpdate);
+    return () => {
+      window.removeEventListener(GEMINI_MODEL_NAMES_UPDATED_EVENT, handleUpdate);
+    };
+  }, []);
+
+  // Allow prop override (same pattern as Claude's ModelSelector)
+  const models = availableModelsProp || dynamicModels;
 
   // Find selected model or default
-  const selectedModelData = GEMINI_MODELS.find(m => m.id === selectedModel)
-    || GEMINI_MODELS.find(m => m.isDefault)
-    || GEMINI_MODELS[0];
+  const selectedModelData = models.find(m => m.id === selectedModel)
+    || models.find(m => m.isDefault)
+    || models[0];
 
   return (
     <Popover
@@ -99,9 +182,9 @@ export const GeminiModelSelector: React.FC<GeminiModelSelectorProps> = ({
       content={
         <div className="w-[320px] p-1">
           <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border/50 mb-1">
-            选择 Gemini 模型
+            Select Gemini Model
           </div>
-          {GEMINI_MODELS.map((model) => {
+          {models.map((model) => {
             const isSelected = selectedModel === model.id ||
               (!selectedModel && model.isDefault);
             return (
@@ -126,7 +209,7 @@ export const GeminiModelSelector: React.FC<GeminiModelSelectorProps> = ({
                     )}
                     {model.isDefault && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                        推荐
+                        Default
                       </span>
                     )}
                   </div>
