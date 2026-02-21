@@ -2,8 +2,21 @@
  * Task Management Widgets - Claude Code 任务管理工具
  *
  * 核心组件：TaskListAggregateWidget
- * 从同一消息中的多个 TaskCreate/TaskUpdate/TaskList/TaskGet 工具调用
+ * 从同一消息中的多个 TaskCreate/TaskUpdate 工具调用
  * 聚合重建完整的任务列表状态，渲染为统一的任务面板
+ *
+ * 数据流：
+ * - TaskCreate input: { subject, description, activeForm }
+ *   result.content: "Task #1 created successfully: ..."
+ *   result.sourceMessage.toolUseResult: { task: { id: "1", subject: "..." } }
+ *
+ * - TaskUpdate input: { taskId: "1", status: "completed" }
+ *   result.content: "Updated task #1 status to completed"
+ *
+ * taskId 来源优先级：
+ * 1. result.sourceMessage.toolUseResult.task.id
+ * 2. result.content 中的 "Task #N" 正则匹配
+ * 3. 按 TaskCreate 出现顺序自增分配
  */
 
 import React from "react";
@@ -30,65 +43,71 @@ interface TaskItem {
   subject: string;
   status: string;
   description?: string;
-  activeForm?: string;
 }
 
 // 模块级任务状态表，跨消息持久化
-// key: taskId, value: TaskItem
 const globalTaskStore = new Map<string, TaskItem>();
-
-// ============================================================================
-// 工具调用数据结构
-// ============================================================================
+// 自增 ID 计数器（当无法从 result 获取 taskId 时使用）
+let autoIncrementId = 0;
 
 export interface TaskToolCall {
-  name: string;       // "TaskCreate" | "TaskUpdate" | "TaskList" | "TaskGet"
-  input: any;         // tool_use.input
-  result?: any;       // normalizedResult (含 sourceMessage)
-  id?: string;        // tool_use.id
+  name: string;
+  input: any;
+  result?: any;
+  id?: string;
 }
-
-// ============================================================================
-// TaskListAggregateWidget - 聚合渲染任务列表
-// ============================================================================
 
 export interface TaskListAggregateWidgetProps {
   toolCalls: TaskToolCall[];
 }
 
 /**
+ * 从 result 中提取 taskId
+ */
+function extractTaskId(result: any): string | null {
+  // 1. 从 toolUseResult.task.id
+  const fromToolUseResult = result?.sourceMessage?.toolUseResult?.task?.id;
+  if (fromToolUseResult) return String(fromToolUseResult);
+
+  // 2. 从 content 字符串 "Task #N"
+  if (typeof result?.content === 'string') {
+    const match = result.content.match(/Task #(\d+)/);
+    if (match) return match[1];
+  }
+
+  return null;
+}
+
+/**
  * 从 tool_use 和 tool_result 中重建任务列表状态
  */
 function buildTaskList(toolCalls: TaskToolCall[]): TaskItem[] {
-  // 先处理 TaskCreate，再处理 TaskUpdate
   const creates = toolCalls.filter(t => /^TaskCreate$/i.test(t.name));
   const updates = toolCalls.filter(t => /^TaskUpdate$/i.test(t.name));
 
   // 处理 TaskCreate
   for (const tc of creates) {
-    const subject = tc.input?.subject || '';
+    const subject = tc.input?.subject || '未命名任务';
     const description = tc.input?.description;
-    const activeForm = tc.input?.activeForm;
 
-    // 从 result 中提取 taskId
-    let taskId = '';
-    const toolUseResult = tc.result?.sourceMessage?.toolUseResult;
-    if (toolUseResult?.task?.id) {
-      taskId = String(toolUseResult.task.id);
-    } else if (typeof tc.result?.content === 'string') {
-      const match = tc.result.content.match(/Task #(\d+)/);
-      if (match) taskId = match[1];
+    // 尝试从 result 获取 taskId
+    let taskId = extractTaskId(tc.result);
+
+    // 如果没有 result（还在执行中），用自增 ID
+    if (!taskId) {
+      autoIncrementId++;
+      taskId = String(autoIncrementId);
     }
 
-    if (taskId && subject) {
-      const task: TaskItem = {
+    // 只有当 globalTaskStore 中没有这个 ID 时才写入
+    // （避免重复渲染时覆盖已更新的状态）
+    if (!globalTaskStore.has(taskId)) {
+      globalTaskStore.set(taskId, {
         id: taskId,
         subject,
         status: 'pending',
         description,
-        activeForm,
-      };
-      globalTaskStore.set(taskId, task);
+      });
     }
   }
 
@@ -103,9 +122,9 @@ function buildTaskList(toolCalls: TaskToolCall[]): TaskItem[] {
       if (existing) {
         if (newStatus) existing.status = newStatus;
         if (newSubject) existing.subject = newSubject;
+        globalTaskStore.set(taskId, existing);
       } else {
-        // TaskCreate 可能在之前的消息中，globalTaskStore 已有
-        // 如果没有，创建一个占位
+        // 之前的消息中创建的任务，但 globalTaskStore 被清空了
         globalTaskStore.set(taskId, {
           id: taskId,
           subject: newSubject || `任务 #${taskId}`,
@@ -115,7 +134,6 @@ function buildTaskList(toolCalls: TaskToolCall[]): TaskItem[] {
     }
   }
 
-  // 返回所有已知任务，按 id 排序
   return Array.from(globalTaskStore.values())
     .sort((a, b) => Number(a.id) - Number(b.id));
 }
@@ -126,53 +144,59 @@ export const TaskListAggregateWidget: React.FC<TaskListAggregateWidgetProps> = (
   const tasks = React.useMemo(() => buildTaskList(toolCalls), [toolCalls]);
 
   const completedCount = tasks.filter(t => t.status === 'completed').length;
+  const inProgressCount = tasks.filter(t => t.status === 'in_progress').length;
   const totalCount = tasks.length;
+
+  if (totalCount === 0) return null;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2">
         <ListTodo className="h-4 w-4 text-primary" />
         <span className="text-sm font-medium">任务列表</span>
         <Badge variant="outline" className="text-xs">
           {completedCount}/{totalCount}
         </Badge>
+        {inProgressCount > 0 && (
+          <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20">
+            {inProgressCount} 进行中
+          </Badge>
+        )}
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {tasks.map((task) => (
           <div
             key={task.id}
             className={cn(
-              "flex items-start gap-3 p-2.5 rounded-lg border bg-card/50",
-              task.status === "completed" && "opacity-60"
+              "flex items-start gap-2.5 px-3 py-2 rounded-md border bg-card/50",
+              task.status === "completed" && "opacity-60",
+              task.status === "deleted" && "opacity-40"
             )}
           >
-            <div className="mt-0.5">
+            <div className="mt-0.5 shrink-0">
               {statusIcons[task.status] || statusIcons.pending}
             </div>
-            <div className="flex-1 min-w-0 space-y-0.5">
+            <div className="flex-1 min-w-0">
               <p className={cn(
-                "text-sm",
-                task.status === "completed" && "line-through"
+                "text-sm leading-snug",
+                task.status === "completed" && "line-through text-muted-foreground"
               )}>
                 {task.subject}
               </p>
-              {task.description && task.status !== 'completed' && (
-                <p className="text-xs text-muted-foreground line-clamp-1">
+              {task.description && task.status === 'pending' && (
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
                   {task.description}
                 </p>
               )}
             </div>
-            <Badge
-              variant="outline"
-              className={cn("text-xs shrink-0", {
-                "bg-success/10 text-success border-success/20": task.status === "completed",
-                "bg-info/10 text-info border-info/20": task.status === "in_progress",
-                "bg-muted/10 text-muted-foreground border-muted/20": task.status === "pending",
-                "bg-destructive/10 text-destructive border-destructive/20": task.status === "deleted",
-              })}
-            >
+            <span className={cn(
+              "text-xs shrink-0 mt-0.5",
+              task.status === "completed" ? "text-success" :
+              task.status === "in_progress" ? "text-info" :
+              "text-muted-foreground"
+            )}>
               {statusLabels[task.status] || task.status}
-            </Badge>
+            </span>
           </div>
         ))}
       </div>
@@ -181,25 +205,18 @@ export const TaskListAggregateWidget: React.FC<TaskListAggregateWidgetProps> = (
 };
 
 // ============================================================================
-// 单独的 Widget（用于 toolRegistryInit 注册，但实际渲染由聚合组件接管）
-// 保留导出以兼容 index.ts
+// 单独的 Widget 导出（兼容 toolRegistryInit 注册）
+// 实际渲染由 TaskListAggregateWidget 在 ToolCallsGroup 中接管
 // ============================================================================
 
 export interface TaskCreateWidgetProps {
-  subject?: string;
-  description?: string;
-  activeForm?: string;
-  result?: any;
+  subject?: string; description?: string; activeForm?: string; result?: any;
 }
 export const TaskCreateWidget: React.FC<TaskCreateWidgetProps> = () => null;
 
 export interface TaskUpdateWidgetProps {
-  taskId?: string;
-  status?: string;
-  subject?: string;
-  description?: string;
-  activeForm?: string;
-  result?: any;
+  taskId?: string; status?: string; subject?: string;
+  description?: string; activeForm?: string; result?: any;
 }
 export const TaskUpdateWidget: React.FC<TaskUpdateWidgetProps> = () => null;
 
