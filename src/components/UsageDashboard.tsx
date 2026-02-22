@@ -964,17 +964,11 @@ export const UsageDashboard: React.FC<UsageDashboardProps> = ({ onBack }) => {
                         <span>{t('usageDashboard.dailyUsage')}</span>
                       </h3>
                       {timelineChartData ? (
-                        <div className="relative pl-8 pr-4">
-                          {/* Y-axis labels */}
-                          <div className="absolute left-0 top-0 bottom-8 flex flex-col justify-between text-xs text-muted-foreground">
-                            <span>{formatCurrency(timelineChartData.maxCost)}</span>
-                            <span>{formatCurrency(timelineChartData.halfMaxCost)}</span>
-                            <span>{formatCurrency(0)}</span>
-                          </div>
-                          
+                        <div className="relative pr-4">
+
                           {/* Chart container - SVG bar chart */}
-                          <div className="relative border-l border-b border-border" style={{ height: '256px' }}>
-                            <svg width="100%" height="256" className="ml-4" style={{ overflow: 'visible' }}>
+                          <div className="relative border-b border-border" style={{ height: '256px' }}>
+                            <svg width="100%" height="256" style={{ overflow: 'visible' }}>
                               <defs>
                                 <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
                                   <stop offset="0%" style={{ stopColor: 'var(--color-primary)', stopOpacity: 1 }} />
@@ -990,14 +984,27 @@ export const UsageDashboard: React.FC<UsageDashboardProps> = ({ onBack }) => {
                                 const x = `${index * barWidthPercent + gapPercent / 2}%`;
                                 const barHeight = Math.max(day.total_cost > 0 ? 2 : 0, Math.round(256 * day.heightPercent / 100));
                                 const y = 256 - barHeight;
+                                const centerX = `${index * barWidthPercent + barWidthPercent / 2}%`;
                                 const formattedDate = day.date.toLocaleDateString('en-US', {
                                   weekday: 'short',
                                   month: 'short',
                                   day: 'numeric'
                                 });
+                                const cnDate = `${day.date.getMonth() + 1}/${day.date.getDate()}`;
 
                                 return (
                                   <g key={day.date.toISOString()} className="group">
+                                    {/* Cost label above bar */}
+                                    {day.total_cost > 0 && (
+                                      <text
+                                        x={centerX}
+                                        y={y - 6}
+                                        textAnchor="middle"
+                                        style={{ fontSize: '10px', fill: 'var(--color-muted-foreground)' }}
+                                      >
+                                        {formatCurrency(day.total_cost)}
+                                      </text>
+                                    )}
                                     <rect
                                       x={x}
                                       y={y}
@@ -1009,12 +1016,12 @@ export const UsageDashboard: React.FC<UsageDashboardProps> = ({ onBack }) => {
                                     />
                                     <title>{`${formattedDate}\n${formatCurrency(day.total_cost)}\n${formatTokens(day.total_tokens)} tokens`}</title>
                                     <text
-                                      x={`${index * barWidthPercent + barWidthPercent / 2}%`}
+                                      x={centerX}
                                       y={256 + 16}
                                       textAnchor="middle"
                                       style={{ fontSize: '11px', fill: 'var(--color-muted-foreground)' }}
                                     >
-                                      {day.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      {cnDate}
                                     </text>
                                   </g>
                                 );
